@@ -1,0 +1,15 @@
+diff --git a/node_modules/nostr-core/dist/nwc.js b/node_modules/nostr-core/dist/nwc.js
+index 9c29542570a8f35cc206a60ef3a5088b11251885..321ff8f6b3b93939eaba2eac4cf4448113bd5eac 100644
+--- a/node_modules/nostr-core/dist/nwc.js
++++ b/node_modules/nostr-core/dist/nwc.js
+@@ -373,7 +373,9 @@
+                 const eventTemplate = {
+                     kind: NWC_REQUEST_KIND,
+                     created_at: Math.floor(Date.now() / 1000),
+-                    tags: [['p', this.walletPubkey]],
++                    tags: requestScheme === 'nip44'
++                        ? [['encryption', 'nip44_v2'], ['p', this.walletPubkey]]
++                        : [['p', this.walletPubkey]],
+                     content: encryptedContent,
+                 };
+                 const event = finalizeEvent(eventTemplate, this.secretKey);

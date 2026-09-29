@@ -1,0 +1,18 @@
+{
+  "name": "nwc-limitprobe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "patch-package",
+    "test": "node --test tests/*.test.mjs",
+    "phase2:check": "node scripts/phase2-nwc-check.mjs",
+    "phase3:single": "node scripts/phase3-single-payment.mjs"
+  },
+  "dependencies": {
+    "nostr-core": "1.0.4"
+  },
+  "devDependencies": {
+    "patch-package": "8.0.0"
+  }
+}
