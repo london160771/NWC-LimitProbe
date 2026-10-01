@@ -40,3 +40,15 @@ node_modules/
 nwc-url
 bitcoin.conf
 lnd.conf
+
+# Phase 4–6 private runtime evidence (create these outside the workspace)
+app-config.json
+bob-addinvoice-*.json
+bob-invoice-*
+bob-payment-hash-*
+bob-lookup-*.json
+bob-*-evidence.json
+bob-final-observations.jsonl
+phase6-run-config.json
+phase45-race-*.json
+phase6.1-payment-dispatch-started

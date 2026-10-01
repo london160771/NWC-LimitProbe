@@ -2,6 +2,8 @@
 
 Date: 2026-10-01
 
+> Historical record only: its PASS describes the earlier run and is not valid final Phase 6.1 evidence. That run used no bounded receiver-observation window and did not satisfy the corrected run-binding/NWC lookup checks. Do not reuse it as the result of the fresh Phase 6.1 race.
+
 ## Outcome
 
 Phase 1–3 remained intact. The existing Polar network, Alice/Bob nodes, channel, Alby Hub, and relay were reused. Phase 4 created one fresh 1,000 sat non-renewing NWC connection, then dispatched exactly two 700 sat Bob invoices through a shared synchronization barrier. Phase 5 independently reconciled both payment hashes using Bob's `lncli lookupinvoice`.

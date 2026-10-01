@@ -2,245 +2,229 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { reconcileTwoInvoices } from "./phase45-core.mjs";
+import { evaluateRunEvidence, safeErrorCode } from "./phase45-core.mjs";
 
-const REPORT_VERSION = "1.0.0";
-const CONFIGURED_BUDGET_SATS = 1_000;
-const REQUESTED_AMOUNT_SATS = 700;
+const REPORT_VERSION = "2.0.0";
 const REQUEST_IDS = ["A", "B"];
-const SAFE_STATES = new Set(["SETTLED", "OPEN", "CANCELED", "EXPIRED"]);
-const SAFE_NWC_ERRORS = new Set([
-  "BAD_REQUEST",
-  "INTERNAL",
-  "INSUFFICIENT_BALANCE",
-  "NOT_FOUND",
-  "OTHER",
-  "PAYMENT_FAILED",
-  "QUOTA_EXCEEDED",
-  "RATE_LIMITED",
-  "RESTRICTED",
-  "UNAUTHORIZED",
+const SAFE_STATES = new Set(["SETTLED", "OPEN", "ACCEPTED", "PENDING", "CANCELED", "EXPIRED", "NOT_FOUND"]);
+const SAFE_STAGES = new Set([
+  "prepared",
+  "barrier_armed_payment_may_have_been_dispatched",
+  "both_client_calls_started",
+  "dispatch_complete",
+  "nwc_lookup_complete",
+  "race_complete",
+  "final_nwc_lookup_complete",
+  "post_dispatch_failure",
 ]);
+const HASH_RE = /^[0-9a-f]{64}$/i;
 
-function nonnegativeInteger(value) {
-  if (value === null || value === undefined || value === "") return null;
+function integer(value, { allowNegative = false } = {}) {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && (allowNegative || value >= 0) ? value : null;
+  }
+  if (typeof value !== "string" || !/^-?\d+$/.test(value)) return null;
   const number = Number(value);
-  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+  return Number.isSafeInteger(number) && (allowNegative || number >= 0) ? number : null;
 }
 
-function normalizedTimestamp(value) {
+function timestamp(value) {
   if (typeof value !== "string" || value.length === 0) return null;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-function safePaymentHash(value) {
-  return typeof value === "string" && /^[0-9a-f]{64}$/i.test(value)
-    ? value.toLowerCase()
-    : null;
+function hash(value) {
+  return typeof value === "string" && HASH_RE.test(value) ? value.toLowerCase() : null;
 }
 
-function safeErrorCode(value) {
-  return typeof value === "string" && SAFE_NWC_ERRORS.has(value)
-    ? value
-    : value == null
-      ? null
-      : "OTHER";
+function state(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.toUpperCase();
+  return SAFE_STATES.has(normalized) ? normalized : null;
 }
 
-function exactlyOneById(values, id) {
-  if (!Array.isArray(values)) return null;
-  const matches = values.filter((value) => value?.id === id);
+function attemptById(attempts, id) {
+  const matches = Array.isArray(attempts) ? attempts.filter((item) => item?.id === id) : [];
   return matches.length === 1 ? matches[0] : null;
 }
 
-function addMissing(missing, condition, reason) {
-  if (!condition && !missing.includes(reason)) missing.push(reason);
+function observedReportTime(race, bob) {
+  const values = [
+    race?.runStartedAt,
+    race?.startingBudget?.capturedAt,
+    race?.requestsPreparedAt,
+    race?.barrierReleasedAt,
+    ...(Array.isArray(race?.attempts) ? race.attempts.flatMap((item) => [item?.dispatchedAt, item?.responseAt]) : []),
+    ...(Array.isArray(race?.nwcLookups) ? race.nwcLookups.map((item) => item?.observedAt) : []),
+    ...(Array.isArray(bob?.observations) ? bob.observations.map((item) => item?.observedAt) : []),
+  ].map(timestamp).filter(Boolean).sort();
+  return values.at(-1) ?? null;
 }
 
-function normalizedBudgetAfter(value) {
-  const totalMsat = nonnegativeInteger(value?.totalBudgetMsat);
-  const usedMsat = nonnegativeInteger(value?.usedBudgetMsat);
-  const remainingMsat = nonnegativeInteger(value?.remainingBudgetMsat);
-  const remainingSats =
-    remainingMsat !== null && remainingMsat % 1_000 === 0 ? remainingMsat / 1_000 : null;
-  const isComplete =
-    totalMsat === CONFIGURED_BUDGET_SATS * 1_000 &&
-    usedMsat !== null &&
-    remainingMsat !== null &&
-    remainingSats !== null &&
-    value?.renewalPeriod === "never";
-  return { isComplete, remainingSats };
+function projectNwcLookup(item) {
+  return {
+    runId: typeof item?.runId === "string" && /^[A-Za-z0-9-]{1,80}$/.test(item.runId) ? item.runId : null,
+    id: REQUEST_IDS.includes(item?.id) ? item.id : null,
+    requestedHash: hash(item?.requestedHash),
+    returnedHash: hash(item?.returnedHash),
+    expectedAmountSat: integer(item?.expectedAmountSat),
+    state: state(item?.lookupState),
+    amountMsat: integer(item?.amountMsat),
+    feesPaidMsat: integer(item?.feesPaidMsat),
+    settledAt: timestamp(item?.settledAt),
+    observedAt: timestamp(item?.observedAt),
+    errorCode: item?.errorCode == null ? null : safeErrorCode(item.errorCode),
+  };
 }
 
-/**
- * Build a stable, allowlisted report from the sanitized Phase 4 race result and
- * Bob's independently reconciled Phase 5 evidence. Supply generatedAt in tests
- * or when byte-for-byte reproducibility is required.
- */
-export function buildEvidenceReport({ raceEvidence, bobEvidence, generatedAt } = {}) {
-  const generatedTimestamp = normalizedTimestamp(generatedAt ?? new Date().toISOString());
-  if (generatedTimestamp === null) throw new Error("generated_timestamp_invalid");
+function projectReceiverObservation(item) {
+  return {
+    runId: typeof item?.runId === "string" && /^[A-Za-z0-9-]{1,80}$/.test(item.runId) ? item.runId : null,
+    id: REQUEST_IDS.includes(item?.id) ? item.id : null,
+    requestedHash: hash(item?.requestedHash),
+    returnedHash: hash(item?.returnedHash),
+    expectedAmountSat: integer(item?.expectedAmountSat),
+    state: state(item?.state),
+    settled: typeof item?.settled === "boolean" ? item.settled : null,
+    amountPaidSat: integer(item?.amountPaidSat),
+    settleDateUnix: integer(item?.settleDateUnix),
+    settledAt: timestamp(item?.settledAt),
+    observedAt: timestamp(item?.observedAt),
+    errorCode: item?.errorCode == null ? null : safeErrorCode(item.errorCode),
+  };
+}
 
-  const missing = [];
-  const race = raceEvidence && typeof raceEvidence === "object" ? raceEvidence : {};
-  const bob = bobEvidence && typeof bobEvidence === "object" ? bobEvidence : {};
-  const attemptRecords = Array.isArray(race.attempts) ? race.attempts : [];
-  const bobRecords = Array.isArray(bob.outcomes) ? bob.outcomes : [];
-
-  addMissing(missing, race.test === "phase4-two-payment-budget-race", "race_run_missing_or_unrecognized");
-  addMissing(missing, race.network === "regtest", "network_not_verified_as_regtest");
-  addMissing(missing, race.wallet === "Alby Hub / Alice", "wallet_not_verified");
-  addMissing(
-    missing,
-    race.startingBudget?.totalMsat === CONFIGURED_BUDGET_SATS * 1_000 &&
-      race.startingBudget?.usedMsat === 0 &&
-      race.startingBudget?.spendableMsat === CONFIGURED_BUDGET_SATS * 1_000 &&
-      race.startingBudget?.spendableSats === CONFIGURED_BUDGET_SATS &&
-      race.startingBudget?.renewal === "never",
-    "starting_budget_not_verified",
-  );
-  addMissing(missing, normalizedTimestamp(race.barrierReleasedAt) !== null, "barrier_timestamp_missing");
-  addMissing(
-    missing,
-    typeof race.dispatchDeltaMs === "number" &&
-      Number.isFinite(race.dispatchDeltaMs) &&
-      race.dispatchDeltaMs >= 0,
-    "dispatch_delta_missing",
-  );
-  addMissing(missing, bob.phase === "final", "bob_final_evidence_missing");
-
-  const attempts = REQUEST_IDS.map((id) => exactlyOneById(attemptRecords, id));
-  addMissing(
-    missing,
-    attemptRecords.length === REQUEST_IDS.length && attempts.every(Boolean),
-    "two_unique_attempts_missing",
-  );
-
-  const hashes = attempts.map((attempt) => safePaymentHash(attempt?.paymentHash));
-  addMissing(
-    missing,
-    hashes.every(Boolean) && new Set(hashes).size === REQUEST_IDS.length,
-    "payment_hashes_missing_or_ambiguous",
-  );
-
-  for (let index = 0; index < REQUEST_IDS.length; index += 1) {
-    const id = REQUEST_IDS[index];
-    const attempt = attempts[index];
-    addMissing(missing, normalizedTimestamp(attempt?.dispatchedAt) !== null, `dispatch_${id.toLowerCase()}_timestamp_missing`);
-    addMissing(missing, attempt?.result === "success" || attempt?.result === "error", `nwc_${id.toLowerCase()}_result_missing`);
-  }
-
-  const budgetAfter = normalizedBudgetAfter(race.budgetAfter);
-  addMissing(missing, budgetAfter.isComplete, "post_race_budget_missing_or_inconsistent");
-
-  const bobById = REQUEST_IDS.map((id) => exactlyOneById(bobRecords, id));
-  addMissing(
-    missing,
-    bobRecords.length === REQUEST_IDS.length && bobById.every(Boolean),
-    "two_unique_bob_lookups_missing",
-  );
-
-  const expectedInvoices = REQUEST_IDS.map((id, index) => ({
+function projectAttempt(item, id) {
+  const result = item?.result === "success" || item?.result === "error" ? item.result : "unknown";
+  return {
     id,
-    paymentHash: hashes[index] ?? "",
-    amountSat: REQUESTED_AMOUNT_SATS,
+    runId: typeof item?.runId === "string" && /^[A-Za-z0-9-]{1,80}$/.test(item.runId) ? item.runId : null,
+    paymentHash: hash(item?.requestedHash),
+    requestedAmountSats: integer(item?.expectedAmountSat),
+    barrierReleasedAt: timestamp(item?.barrierReleasedAt),
+    dispatchedAt: timestamp(item?.dispatchedAt),
+    dispatchMonotonicMs: typeof item?.dispatchMonotonicMs === "number" && Number.isFinite(item.dispatchMonotonicMs) ? item.dispatchMonotonicMs : null,
+    responseAt: timestamp(item?.responseAt),
+    responseMonotonicMs: typeof item?.responseMonotonicMs === "number" && Number.isFinite(item.responseMonotonicMs) ? item.responseMonotonicMs : null,
+    nwcResult: {
+      status: result,
+      errorCode: result === "error" ? safeErrorCode(item?.errorCode) : null,
+    },
+    reportedFeesMsat: integer(item?.feesPaidMsat),
+  };
+}
+
+/** Build a deterministic, redacted report from one run's captured race and reconciliation evidence. */
+export function buildEvidenceReport({ raceEvidence, bobEvidence, generatedAt } = {}) {
+  const race = raceEvidence && typeof raceEvidence === "object" && !Array.isArray(raceEvidence) ? raceEvidence : {};
+  const bob = bobEvidence && typeof bobEvidence === "object" && !Array.isArray(bobEvidence) ? bobEvidence : {};
+  const evaluated = evaluateRunEvidence({ raceEvidence: race, bobEvidence: bob });
+  const generatedTimestamp = timestamp(generatedAt) ?? observedReportTime(race, bob);
+  const attemptInputs = REQUEST_IDS.map((id) => attemptById(race.attempts, id));
+  const attempts = attemptInputs.map((item, index) => projectAttempt(item, REQUEST_IDS[index]));
+  const initial = Array.isArray(race.initialBobObservations)
+    ? race.initialBobObservations.map(projectReceiverObservation).sort((a, b) => (a.id ?? "").localeCompare(b.id ?? ""))
+    : [];
+  const receiverObservations = Array.isArray(bob.observations)
+    ? bob.observations.map(projectReceiverObservation).sort((a, b) => (a.observedAt ?? "").localeCompare(b.observedAt ?? "") || (a.id ?? "").localeCompare(b.id ?? ""))
+    : [];
+  const nwcLookups = Array.isArray(race.nwcLookups)
+    ? race.nwcLookups.map(projectNwcLookup).sort((a, b) => (a.observedAt ?? "").localeCompare(b.observedAt ?? "") || (a.id ?? "").localeCompare(b.id ?? ""))
+    : [];
+  const outcomes = evaluated.receiverOutcomes.map((outcome) => ({
+    id: outcome.id,
+    runId: outcome.runId,
+    paymentHash: outcome.paymentHash,
+    expectedAmountSats: outcome.expectedAmountSat,
+    reconciled: outcome.reconciled,
+    terminal: outcome.terminal,
+    state: outcome.state,
+    settled: outcome.settled,
+    amountPaidSats: outcome.amountPaidSat,
+    settledAt: outcome.settledAt,
+    latestObservedAt: timestamp(outcome.latestObservedAt),
+    observationCount: outcome.observationCount,
+    reasonCodes: outcome.reasonCodes,
   }));
-  const bobLookups = bobById.filter(Boolean).map((outcome) => ({
-    paymentHash: safePaymentHash(outcome.paymentHash) ?? "",
-    settled: outcome.reconciled === true ? outcome.settled : undefined,
-    state: SAFE_STATES.has(outcome.state) ? outcome.state : "UNRECONCILED",
-    amountPaidSat: nonnegativeInteger(outcome.amountPaidSat),
-    settleDateUnix: nonnegativeInteger(outcome.settleDateUnix),
-  }));
-
-  // Re-run the existing Phase 5 ground-truth reconciler; do not trust a
-  // classification copied from either input artifact.
-  const reconciliation = reconcileTwoInvoices({
-    expectedInvoices,
-    bobLookups,
-    startingSpendableBudgetSats: CONFIGURED_BUDGET_SATS,
-  });
-  addMissing(
-    missing,
-    reconciliation.outcomes.length === REQUEST_IDS.length &&
-      reconciliation.outcomes.every((outcome) => outcome.reconciled),
-    "bob_settlement_reconciliation_incomplete",
-  );
-
-  const missingEvidence = [...missing].sort();
-  const classification =
-    missingEvidence.length === 0 ? reconciliation.classification : "INCONCLUSIVE";
-  const settledPrincipal = reconciliation.totalSettledPrincipalSats;
-  const invariantHolds =
-    typeof settledPrincipal === "number" && Number.isFinite(settledPrincipal)
-      ? settledPrincipal <= CONFIGURED_BUDGET_SATS
-      : null;
-
-  const reportAttempts = REQUEST_IDS.map((id, index) => {
-    const attempt = attempts[index];
-    const bobOutcome = reconciliation.outcomes.find((outcome) => outcome.id === id);
-    const nwcStatus =
-      attempt?.result === "success" || attempt?.result === "error" ? attempt.result : "unknown";
-    const fee = nonnegativeInteger(attempt?.feesPaidMsat);
-    return {
-      id,
-      paymentHash: hashes[index],
-      requestedAmountSats: REQUESTED_AMOUNT_SATS,
-      dispatchedAt: normalizedTimestamp(attempt?.dispatchedAt),
-      nwcResult: {
-        status: nwcStatus,
-        errorCode: nwcStatus === "error" ? safeErrorCode(attempt?.errorCode) : null,
-      },
-      reportedFeesMsat: fee,
-      bobSettlement: {
-        reconciled: bobOutcome?.reconciled === true,
-        state: bobOutcome?.reconciled === true ? bobOutcome.state : "UNRECONCILED",
-        settled: bobOutcome?.reconciled === true ? bobOutcome.settled : null,
-        amountPaidSat: bobOutcome?.reconciled === true ? bobOutcome.amountPaidSat : null,
-        settledAt: bobOutcome?.reconciled === true ? bobOutcome.settledAt : null,
-      },
-    };
-  });
+  const supplementary = evaluated.reasonCodes.filter((reason) => reason.startsWith("post_race_"));
+  const verdictReasons = evaluated.reasonCodes.filter((reason) => !reason.startsWith("post_race_"));
+  const starting = race.startingBudget ?? {};
 
   return {
     reportVersion: REPORT_VERSION,
     generatedAt: generatedTimestamp,
+    runId: typeof race.runId === "string" && /^[A-Za-z0-9-]{1,80}$/.test(race.runId) ? race.runId : null,
     network: "regtest",
     walletUnderTest: "Alby Hub / NWC",
-    configuredBudgetSats: CONFIGURED_BUDGET_SATS,
-    renewal: "never",
-    requestCount: REQUEST_IDS.length,
-    requestedAmountPerInvoiceSats: REQUESTED_AMOUNT_SATS,
-    barrierReleasedAt: normalizedTimestamp(race.barrierReleasedAt),
-    dispatchDeltaMs:
-      typeof race.dispatchDeltaMs === "number" &&
-      Number.isFinite(race.dispatchDeltaMs) &&
-      race.dispatchDeltaMs >= 0
-        ? race.dispatchDeltaMs
-        : null,
-    attempts: reportAttempts,
-    independentlySettledPrincipalSats: settledPrincipal,
-    postRaceRemainingBudgetSats: budgetAfter.remainingSats,
-    invariant: {
-      expression: "totalSettledPrincipalSats <= configuredBudgetSats",
-      configuredBudgetSats: CONFIGURED_BUDGET_SATS,
-      totalSettledPrincipalSats: settledPrincipal,
-      holds: invariantHolds,
+    runState: {
+      stage: SAFE_STAGES.has(race.stage) ? race.stage : "unknown",
+      paymentMayHaveBeenDispatched: race.paymentMayHaveBeenDispatched === true,
+      failureCode: race.failureCode == null ? null : safeErrorCode(race.failureCode),
     },
-    finalClassification: classification,
+    configuredBudgetSats: 1_000,
+    renewal: "never",
+    requestCount: 2,
+    requestedAmountPerInvoiceSats: 700,
+    startingBudget: {
+      capturedAt: timestamp(starting.capturedAt),
+      totalBudgetMsat: integer(starting.totalBudgetMsat),
+      usedBudgetMsat: integer(starting.usedBudgetMsat),
+      spendableBudgetMsat: evaluated.startingBudgetVerified ? evaluated.startingSpendableBudgetMsat : null,
+      spendableBudgetSats: evaluated.startingBudgetVerified && evaluated.startingSpendableBudgetMsat !== null
+        ? evaluated.startingSpendableBudgetMsat / 1_000
+        : null,
+      verified: evaluated.startingBudgetVerified,
+      renewalPeriod: typeof starting.renewalPeriod === "string" ? starting.renewalPeriod : null,
+    },
+    requestsPreparedAt: timestamp(race.requestsPreparedAt),
+    barrierReleasedAt: timestamp(race.barrierReleasedAt),
+    barrierReleaseMonotonicMs: typeof race.barrierReleaseMonotonicMs === "number" && Number.isFinite(race.barrierReleaseMonotonicMs)
+      ? race.barrierReleaseMonotonicMs
+      : null,
+    dispatchTimingBoundary: race.dispatchTimingBoundary === "nwc_client_call_start" ? "NWC client call-start" : null,
+    dispatchDeltaMs: typeof race.dispatchDeltaMs === "number" && Number.isFinite(race.dispatchDeltaMs) ? race.dispatchDeltaMs : null,
+    reconciliation: {
+      deadline: timestamp(race.reconciliationDeadline),
+      windowMs: integer(race.reconciliationWindowMs),
+      pollIntervalMs: integer(race.reconciliationPollIntervalMs),
+      bobObservationCount: receiverObservations.length,
+      initialBobObservations: initial,
+      bobObservations: receiverObservations,
+      nwcLookups,
+      invoices: outcomes,
+    },
+    attempts,
+    independentlySettledPrincipalSats: evaluated.totalSettledPrincipalSats,
+    postRaceBudget: {
+      available: evaluated.postBudget.present,
+      valid: evaluated.postBudget.valid,
+      totalBudgetMsat: evaluated.postBudget.totalBudgetMsat,
+      usedBudgetMsat: evaluated.postBudget.usedBudgetMsat,
+      remainingBudgetMsat: evaluated.postBudget.remainingBudgetMsat,
+      renewalPeriod: evaluated.postBudget.renewalPeriod,
+      issues: evaluated.postBudget.issues,
+    },
+    invariant: {
+      expression: "totalSettledPrincipalSats * 1000 <= startingSpendableBudgetMsat",
+      startingSpendableBudgetMsat: evaluated.startingSpendableBudgetMsat,
+      independentlySettledPrincipalSats: evaluated.totalSettledPrincipalSats,
+      holds: evaluated.invariantHolds,
+    },
+    finalClassification: evaluated.classification,
     evidenceCompleteness: {
-      complete: missingEvidence.length === 0,
-      missing: missingEvidence,
+      complete: evaluated.classification !== "INCONCLUSIVE",
+      missingOrInvalid: verdictReasons,
+      supplementaryIssues: supplementary,
     },
   };
 }
 
-function readJson(path, label) {
+function readJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    throw new Error(`${label}_input_missing_or_invalid`);
+    return null;
   }
 }
 
@@ -256,30 +240,20 @@ function runCli() {
     allowPositionals: false,
   });
   const report = buildEvidenceReport({
-    raceEvidence: readJson(values.race, "race_evidence"),
-    bobEvidence: readJson(values.bob, "bob_evidence"),
+    raceEvidence: readJson(values.race),
+    bobEvidence: readJson(values.bob),
     generatedAt: values["generated-at"],
   });
   const outputPath = resolve(values.out);
   mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o644,
-  });
-  process.stdout.write(
-    `${JSON.stringify({
-      reportWritten: true,
-      reportVersion: report.reportVersion,
-      finalClassification: report.finalClassification,
-      evidenceComplete: report.evidenceCompleteness.complete,
-      output: outputPath,
-    })}\n`,
-  );
+  writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, { encoding: "utf8", mode: 0o644 });
+  process.stdout.write(`${JSON.stringify({
+    reportWritten: true,
+    reportVersion: report.reportVersion,
+    finalClassification: report.finalClassification,
+    evidenceComplete: report.evidenceCompleteness.complete,
+    output: outputPath,
+  })}\n`);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
-  runCli();
-}
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) runCli();

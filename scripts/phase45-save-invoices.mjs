@@ -1,4 +1,5 @@
 import { chmodSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { decodeBolt11 } from "nostr-core";
 
 const privateDirectory = process.env.PRIVATE_DIR ?? "/run/private";
@@ -13,7 +14,8 @@ const prepared = ids.map((id) => {
 
   const invoice = raw?.payment_request;
   const paymentHash = String(raw?.r_hash ?? "").toLowerCase();
-  const decoded = typeof invoice === "string" ? decodeBolt11(invoice) : null;
+  let decoded = null;
+  try { decoded = typeof invoice === "string" ? decodeBolt11(invoice) : null; } catch {}
   if (
     typeof invoice !== "string" ||
     !invoice.startsWith("lnbcrt") ||
@@ -45,11 +47,30 @@ for (const attempt of prepared) {
   }
 }
 
+const runConfig = {
+  runId: randomUUID(),
+  createdAt: new Date().toISOString(),
+  network: "regtest",
+  expectedInvoices: prepared.map(({ id, paymentHash, amountSat }) => ({
+    id: id.toUpperCase(),
+    paymentHash,
+    amountSat,
+  })),
+};
+const runConfigPath = `${privateDirectory}/phase6-run-config.json`;
+writeFileSync(runConfigPath, `${JSON.stringify(runConfig, null, 2)}\n`, {
+  encoding: "utf8",
+  mode: 0o600,
+  flag: "wx",
+});
+chmodSync(runConfigPath, 0o600);
+
 for (const id of ids) unlinkSync(`${privateDirectory}/bob-addinvoice-${id}.json`);
 
 process.stdout.write(
   `${JSON.stringify({
     invoicesCreated: prepared.length,
+    runId: runConfig.runId,
     invoices: prepared.map(({ id, paymentHash, amountSat }) => ({ id, paymentHash, amountSat })),
     network: "regtest",
     bolt11Redacted: true,
