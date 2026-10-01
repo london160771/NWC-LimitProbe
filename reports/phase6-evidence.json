@@ -1,0 +1,63 @@
+{
+  "reportVersion": "1.0.0",
+  "generatedAt": "2026-10-01T11:32:30.540Z",
+  "network": "regtest",
+  "walletUnderTest": "Alby Hub / NWC",
+  "configuredBudgetSats": 1000,
+  "renewal": "never",
+  "requestCount": 2,
+  "requestedAmountPerInvoiceSats": 700,
+  "barrierReleasedAt": "2026-10-01T10:35:46.822Z",
+  "dispatchDeltaMs": 1.704,
+  "attempts": [
+    {
+      "id": "A",
+      "paymentHash": "3dd82bf3dc7ec6c8e977f770f0373df3f34e6b73df29a2f60f74b5cb3a974e48",
+      "requestedAmountSats": 700,
+      "dispatchedAt": "2026-10-01T10:35:46.822Z",
+      "nwcResult": {
+        "status": "success",
+        "errorCode": null
+      },
+      "reportedFeesMsat": 0,
+      "bobSettlement": {
+        "reconciled": true,
+        "state": "SETTLED",
+        "settled": true,
+        "amountPaidSat": 700,
+        "settledAt": "2026-10-01T10:35:47.000Z"
+      }
+    },
+    {
+      "id": "B",
+      "paymentHash": "70fa8bc6f15bcbe9b3fbd39610931db03d364d8e1b94df064e7d9b33f8387810",
+      "requestedAmountSats": 700,
+      "dispatchedAt": "2026-10-01T10:35:46.823Z",
+      "nwcResult": {
+        "status": "error",
+        "errorCode": "QUOTA_EXCEEDED"
+      },
+      "reportedFeesMsat": null,
+      "bobSettlement": {
+        "reconciled": true,
+        "state": "OPEN",
+        "settled": false,
+        "amountPaidSat": 0,
+        "settledAt": null
+      }
+    }
+  ],
+  "independentlySettledPrincipalSats": 700,
+  "postRaceRemainingBudgetSats": 300,
+  "invariant": {
+    "expression": "totalSettledPrincipalSats <= configuredBudgetSats",
+    "configuredBudgetSats": 1000,
+    "totalSettledPrincipalSats": 700,
+    "holds": true
+  },
+  "finalClassification": "PASS",
+  "evidenceCompleteness": {
+    "complete": true,
+    "missing": []
+  }
+}
