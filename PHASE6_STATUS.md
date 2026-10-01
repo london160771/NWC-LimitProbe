@@ -43,4 +43,4 @@ Run all tests with `npm test`.
 
 The report tests cover PASS, FAIL, INCONCLUSIVE, required fields, secret-bearing input projection, and byte-stable output for identical evidence and timestamp. They also verify missing Bob settlement amounts remain inconclusive. The shared Phase 4–5 and NIP encryption regression tests remain in the same suite.
 
-`AGENTS.md`, `SPEC.md`, and `DESIGN.md` from Downloads were scanned before being copied into the repository; no credential-like values were found. Those documents describe an iGetJobs lead-generation product rather than NWC LimitProbe, so the Phase 6 scope was taken from the explicit user request and the existing Phase 4–5 evidence.
+The project-root `AGENTS.md`, `SPEC.md`, and `DESIGN.md` are the restored NWC LimitProbe source-of-truth documents. A credential scan found no secret-like values in them before commit.

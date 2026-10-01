@@ -1,152 +1,62 @@
-# iGetJobs — AGENTS.md
+# NWC LimitProbe — Agent Guide
 
-## Purpose
-Instructions for coding agents working on iGetJobs.
+## Mission
 
-## Source of truth
-When instructions conflict, use this order:
+Build the smallest credible black-box NWC spending-limit conformance/stress tester for the BOSS Battle hackathon.
 
-1. `SPEC.md`
-2. `DESIGN.md`
-3. `AGENTS.md`
-4. `PLAN.md`
-5. `PROJECT_STATE.md`
-6. Existing code
+- Primary track: **Machine Money**
+- Secondary fit: **Freedom Stack**
+- System under test: **Alby Hub**
+- Local stack: **two LND nodes in Polar + local Nostr relay + NWC client**
+- Core proof: **synchronized concurrent payments → `lookup_invoice` reconciliation → PASS/FAIL/INCONCLUSIVE**
 
-Do not expand V1 beyond the approved scope.
+`SPEC.md` defines product behavior. `DESIGN.md` defines the architecture and build sequence. If code or plans conflict with either file, stop and resolve the conflict explicitly; do not silently expand scope.
 
-## Product
-iGetJobs is a personal client-acquisition tool for finding local businesses that either:
-- have no website, or
-- have a poor website that could reasonably need improvement.
+## Non-negotiable rules
 
-The app helps collect leads, audit them, score them, draft outreach, and track status.
+1. Treat Alby Hub as a black box and use NWC for wallet operations.
+2. Never infer settlement solely from a successful `pay_invoice` response; reconcile every attempt with `lookup_invoice` and, where available, receiver evidence.
+3. Never convert missing or contradictory evidence into PASS. Use INCONCLUSIVE with a reason.
+4. Launch both payment requests from one explicit barrier. Do not accidentally serialize them.
+5. Keep principal, fees, budget units, and budget window semantics explicit.
+6. Never log or commit NWC secrets, macaroon material, seed phrases, TLS keys, payment preimages, or other credentials. Redact them in UI, fixtures, reports, and test output.
+7. Use regtest/local funds only for the MVP.
+8. Keep protocol, evaluator, and report logic independent of the UI.
+9. Add only the narrow interfaces required by the current phase. Do not create a generic wallet/payment SDK, multi-wallet layer, fuzzing framework, or fault lab.
+10. The Electrum 4.7.1 path is optional. Label simulations as fixtures and never present them as live-wallet evidence.
 
-## Hard V1 constraints
-- React, not Next.js.
-- TypeScript preferred.
-- Node.js API/backend.
-- Supabase for auth + database.
-- Free tiers only.
-- No paid dependency required for the MVP.
-- No AI integration in V1.
-- No AI voice calling in V1.
-- No automatic outreach sending in V1.
-- No automatic cold calling.
-- No CRM integrations in V1.
-- No mass email automation in V1.
-- Outreach drafts must require human approval.
-- Desktop-first, mobile-usable.
-- Keep architecture simple.
-- Avoid MongoDB.
+## Required workflow
 
-## Data sources
-V1 may use:
-- SerpAPI free tier.
-- OpenStreetMap / Overpass.
-- Manual CSV import.
-- Hunter only as a fallback when a lead has no email and only within free-tier limits.
+Work in this order and finish each phase with a reproducible proof before advancing:
 
-Each source must be isolated behind its own adapter.
+1. Polar + Lightning works.
+2. Alby Hub + NWC connection works.
+3. One payment works and settles.
+4. Two payments launch concurrently.
+5. Settlement reconciliation and the invariant work.
+6. The result/report works.
+7. The historical fixture is attempted only if time remains.
+8. The tiny dashboard and demo are polished last.
 
-## Search workflow
-`Search → Collect → Deduplicate → Audit → Classify → Score → Draft Outreach → Approve → Track`
+For every phase:
 
-## Lead classification
-A lead must be classified as one of:
-- `NO_WEBSITE`
-- `POOR_WEBSITE`
-- `ACCEPTABLE_WEBSITE`
+- state the smallest testable outcome;
+- implement only what that outcome requires;
+- add or update focused tests;
+- run the relevant checks and record exact reproduction steps;
+- update the docs when observed protocol behavior differs from an assumption;
+- preserve evidence for errors and INCONCLUSIVE results instead of hiding them.
 
-## Lead statuses
-- New
-- Qualified
-- Contacted
-- Replied
-- Call Booked
-- Closed
-- Lost
+## GPT-6 Sol High checkpoints
 
-## Website audit rules
-Auditing must be deterministic and explainable.
+Request a **GPT-6 Sol with High reasoning** review at these gates and do not self-approve the gate:
 
-Do not use an LLM.
+- **After Phase 3 — feasibility:** end-to-end topology, NWC permissions/capabilities, secret handling, and settlement proof.
+- **After Phase 6 — correctness:** actual concurrency, reconciliation, invariant math, timeout behavior, redaction, tests, and false PASS/FAIL risks.
+- **After Phase 8 — demo readiness:** narrow scope, reproducible setup, dashboard clarity, report claims, and live-versus-fixture labeling.
 
-Audit output should be structured and should support scoring reasons such as:
-- no website
-- broken or unreachable site
-- missing HTTPS
-- poor mobile behavior
-- weak performance
-- missing contact information
-- missing clear CTA
-- outdated-looking basic structure
-- missing social links where relevant
+Give the reviewer `SPEC.md`, `DESIGN.md`, the relevant diff, test output, and a concise list of unresolved assumptions. Address high-severity findings before proceeding; document any consciously deferred lower-severity item.
 
-Do not invent audit results. Only score from measurable checks.
+## Definition of done
 
-## Scoring
-- Score range: 0–100.
-- Every score must have explicit reasons.
-- Weights should be configurable.
-- A score must never be a black box.
-- UI must show numeric score, priority, classification, and reasons.
-
-## Data hygiene
-Normalize all source records into one lead model.
-
-Deduplicate using, in order where available:
-1. normalized domain
-2. normalized phone
-3. normalized business name + address
-
-Preserve:
-- source
-- source identifier
-
-## Secrets
-- Store API keys only in environment variables.
-- Never commit secrets.
-- Never expose secrets in frontend code.
-- Never log API keys.
-- Throttle/cache Overpass requests.
-- Guard Hunter usage carefully.
-
-## Agent behavior
-Before coding:
-1. Read `SPEC.md`.
-2. Read `DESIGN.md`.
-3. Read `PLAN.md`.
-4. Read `PROJECT_STATE.md`.
-5. Inspect existing code.
-
-During coding:
-- Implement only the current approved phase.
-- Do not start the next phase early.
-- Avoid unnecessary dependencies.
-- Keep functions small and testable.
-- Prefer boring, reliable code over clever abstractions.
-- Preserve existing working behavior.
-
-Before finishing a phase:
-- Run relevant tests.
-- Run lint/typecheck/build where available.
-- Summarize files changed.
-- Update `PROJECT_STATE.md`.
-- Record blockers honestly.
-- Stop before the next phase unless explicitly instructed.
-
-## Review model workflow
-Default implementation model:
-- GPT-6 Luna Max
-
-Use GPT-6.1 Sol Medium for:
-- difficult architecture decisions
-- hard bugs
-- multi-file refactors
-- complex integration work
-
-Use GPT-6.1 Sol High for:
-- major phase reviews
-- pre-deploy review
-- pre-submission review
+The MVP is done when a fresh local setup can run one documented test against Alby Hub, launch two invoices from the same barrier, reconcile both final states, and produce a redacted, downloadable report with a defensible PASS, FAIL, or INCONCLUSIVE result. The demo must explain that LimitProbe tests the guardrail—it is not the guardrail.

@@ -1,277 +1,74 @@
-# iGetJobs — SPEC.md
+# NWC LimitProbe — Product Specification
 
-## 1. Product goal
-iGetJobs is a personal lead-generation and client-acquisition tool for finding local businesses that are good candidates for website work.
+## Product
 
-The MVP should help the user find businesses with:
-- no website, or
-- a poor website,
+**NWC LimitProbe** is a black-box conformance and stress tester for Nostr Wallet Connect spending limits.
 
-then organize, score, review, draft outreach for, and track those leads.
+> AI agents are given Bitcoin wallets with spending limits. LimitProbe proves whether those limits actually stop overspending.
 
-## 2. V1 target markets
-Search city-by-city in:
-- United States
-- United Kingdom
-- Canada
-- Australia
+- **Primary track:** Machine Money
+- **Secondary fit:** Freedom Stack
+- **Primary users:** NWC wallet developers and operators giving autonomous agents Lightning wallets
 
-The location list must remain configurable.
+## Problem and invariant
 
-## 3. Starter niches
-The initial niche list should include:
-- Dentists
-- Med spas
-- Gyms
-- Salons
-- Contractors / home services
-- Real estate
-- Law firms
-- Restaurants
-- Small hotels
+Concurrent payment requests can race a wallet's budget accounting: both may pass a limit check before either updates the remaining budget. LimitProbe tests the externally observable invariant:
 
-The niche list must be configurable.
+```text
+settled principal attributable to the test <= spendable budget at test start
+```
 
-## 4. Core workflow
-`Search → Collect → Deduplicate → Audit → Classify → Score → Draft Outreach → Approve → Track`
+Fees, wallet-reported budget semantics, and timestamps must be recorded separately so the report does not hide ambiguity. A payment response alone is not proof of settlement.
 
-## 5. Data sources
+## MVP scenario
 
-### 5.1 SerpAPI
-Use SerpAPI free tier as one discovery source.
+1. Connect to one Alby Hub NWC connection with `pay_invoice` and the available budget/invoice-lookup permissions.
+2. Read and record the starting budget.
+3. Obtain two distinct BOLT11 invoices from the receiver LND node in Polar. Each invoice is individually affordable, but their combined principal exceeds the configured budget (demo default: 1,000 sats).
+4. Hold both requests behind one start barrier, then dispatch both `pay_invoice` calls concurrently.
+5. Capture request, response, error, and timing data without serializing the calls.
+6. Reconcile each invoice's final state with `lookup_invoice`, retrying only within a bounded settlement window.
+7. Sum only confirmed settled principal, report fees separately, evaluate the invariant, and show a clear result.
 
-### 5.2 OpenStreetMap / Overpass
-Use OSM/Overpass as another discovery source.
+## Result semantics
 
-Requirements:
-- throttle requests
-- cache where useful
-- do not hammer the API
+- **PASS:** reconciliation is complete and settled principal does not exceed the starting spendable budget.
+- **FAIL:** reconciliation is complete and settled principal exceeds the starting spendable budget.
+- **INCONCLUSIVE:** budget cannot be established, settlement cannot be reconciled, required NWC capabilities are unavailable, or the run is otherwise invalid.
 
-### 5.3 CSV import
-Allow manual CSV import for leads collected elsewhere.
+`INCONCLUSIVE` must never be presented as `PASS`. A rejected payment is useful evidence but does not itself determine the result; actual settlement does.
 
-### 5.4 Hunter
-Hunter is a fallback only.
+## Dashboard
 
-Use it only when:
-- a lead is worth pursuing, and
-- no email is already available.
+Keep the dashboard to one test flow:
 
-Stay within free-tier limits.
+- connection/capability status, with secrets redacted;
+- starting budget and two requested invoice amounts;
+- synchronized launch control and live per-payment states;
+- wallet responses, final settlement, fees, and timing;
+- prominent PASS, FAIL, or INCONCLUSIVE result;
+- compact downloadable JSON report.
 
-## 6. Normalized lead model
-Each lead should support, where available:
+The Alby browser extension is optional and must not be a runtime dependency.
 
-- id
-- businessName
-- niche
-- country
-- city
-- address
-- phone
-- website
-- domain
-- email
-- socials
-- rating
-- reviewCount
-- source
-- sourceId
-- audit
-- classification
-- score
-- scoreReasons
-- outreachDraft
-- status
-- notes
-- followUpAt
-- createdAt
-- updatedAt
+## Acceptance criteria
 
-## 7. Deduplication
-Deduplicate by:
-1. normalized domain
-2. normalized phone
-3. normalized business name + address
+- A local regtest path works end to end: local Nostr relay → Alby Hub → payer LND in Polar → receiver LND in Polar.
+- A single NWC payment can be sent and independently reconciled.
+- Two requests are demonstrably launched from the same barrier with dispatch timestamps recorded.
+- Final classification is derived from reconciled invoice state, not only `pay_invoice` responses.
+- The report is deterministic for captured evidence, redacts NWC secrets/preimages, and explains the tested invariant.
+- The current Alby Hub run produces an honest conformance result; no vulnerability is assumed.
 
-Do not silently discard useful source metadata.
+## Non-goals
 
-## 8. Website audit
-The V1 audit must be deterministic.
+- A generic wallet or payment SDK
+- A wallet product, AI-agent marketplace, or production spending guardrail
+- Multi-wallet support in the MVP
+- A general security scanner, fuzzing platform, or fault lab
+- Mainnet funds or a mandatory browser extension
+- Making the historical Electrum reproduction a release blocker
 
-Possible checks:
-- website missing
-- website unreachable
-- HTTPS present
-- mobile viewport/meta present
-- basic mobile usability indicators
-- response/performance indicators
-- visible contact information
-- visible CTA
-- basic page structure
-- obvious broken links where practical
+## Stretch goal
 
-Do not use AI for V1 auditing.
-
-## 9. Classification
-Every lead must be classified as:
-
-### `NO_WEBSITE`
-No usable website was found.
-
-### `POOR_WEBSITE`
-A website exists but fails enough deterministic checks to make it a plausible prospect.
-
-### `ACCEPTABLE_WEBSITE`
-A website exists and does not meet the threshold for a poor-site prospect.
-
-## 10. Lead scoring
-Score each lead from 0–100.
-
-The score must:
-- be deterministic
-- use configurable weights
-- show explicit reasons
-- prioritize `NO_WEBSITE` and strong `POOR_WEBSITE` cases
-- avoid black-box logic
-
-Example score dimensions:
-- website need
-- contactability
-- business quality signal
-- local relevance
-- confidence in source data
-
-Exact weights can be tuned during implementation, but must remain visible in code/config.
-
-## 11. Outreach
-Generate deterministic, editable outreach drafts from lead data.
-
-V1 outreach must:
-- never auto-send
-- require human review
-- be editable before copying/sending
-- use available business details
-- avoid fake personalization
-
-## 12. Lead pipeline
-Statuses:
-- New
-- Qualified
-- Contacted
-- Replied
-- Call Booked
-- Closed
-- Lost
-
-The user must be able to update status manually.
-
-## 13. Key screens
-
-### Login
-Simple Supabase authentication.
-
-### Dashboard
-Show useful totals such as:
-- leads collected
-- qualified leads
-- no-website leads
-- poor-website leads
-- contacted
-- replies
-- calls booked
-- closed
-
-### Search
-Inputs:
-- country
-- city
-- niche
-- source selection where useful
-
-Actions:
-- search
-- collect leads
-- show progress/results
-
-### Leads
-Table/list with:
-- business
-- niche
-- location
-- website state
-- classification
-- score
-- priority
-- status
-- source
-
-Filters should support:
-- niche
-- location
-- classification
-- score/priority
-- status
-- source
-
-### Lead detail
-Show:
-- business/contact data
-- source
-- website audit
-- score
-- score reasons
-- classification
-- outreach draft
-- notes
-- status
-- follow-up
-
-### Outreach
-Show leads ready for outreach and their drafts.
-
-### Settings
-Allow configuration for:
-- API keys via secure backend/env flow
-- scoring weights where practical
-- default markets
-- default niches
-
-## 14. Authentication and database
-Use Supabase for:
-- authentication
-- persistent lead storage
-- user settings
-
-## 15. V1 exclusions
-Do not implement:
-- AI lead scoring
-- LLM-generated outreach
-- AI voice calls
-- automatic outreach
-- automatic email sending
-- mass follow-up campaigns
-- CRM integrations
-- paid data providers
-- complex multi-user team features
-- billing
-- browser extension
-- mobile app
-
-These are V2+ ideas.
-
-## 16. V1 success criteria
-V1 is successful when the user can:
-
-1. log in
-2. search at least one supported source
-3. collect local-business leads
-4. deduplicate them
-5. audit website presence/quality
-6. classify them
-7. score them with visible reasons
-8. filter and inspect leads
-9. create/edit an outreach draft
-10. manually update lead status
-11. persist data in Supabase
+Reproduce the historical Electrum 4.7.1 failure. If a faithful end-to-end environment is too costly, use a clearly labeled deterministic fixture. Fixture results must never be represented as a live wallet test.
