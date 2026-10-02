@@ -3,6 +3,17 @@ import { EXPECTED_INVOICE_EXPIRY_SECONDS, REQUIRED_GRACE_SECONDS } from "./phase
 
 const IDS = ["A", "B"];
 
+export function normalizeInvoiceAcquiredAt(value) {
+  const match = typeof value === "string"
+    ? /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)\.(\d{3,9})Z$/.exec(value)
+    : null;
+  if (!match) return null;
+  const millisecondTimestamp = `${match[1]}.${match[2].slice(0, 3)}Z`;
+  const parsed = Date.parse(millisecondTimestamp);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== millisecondTimestamp) return null;
+  return millisecondTimestamp;
+}
+
 export function beginInvoiceSetup(existingState = null, setupId = randomUUID()) {
   if (existingState !== null) throw new Error("invoice_setup_state_already_exists");
   return {

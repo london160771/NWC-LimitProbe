@@ -4,6 +4,7 @@ import {
   assertNormalInvoiceSetupMayStart,
   beginInvoiceSetup,
   markInvoiceSetupPartial,
+  normalizeInvoiceAcquiredAt,
   recordInvoiceReceipt,
   setInvoiceIntent,
 } from "../scripts/phase45-invoice-setup-core.mjs";
@@ -12,6 +13,14 @@ const receipt = (id, char) => ({
   id, paymentHash: char.repeat(64), amountSat: 700,
   createdAt: "2026-10-01T12:00:00.000Z", invoiceTimestampUnix: 1790856000,
   expirySeconds: 120, expiresAtUnix: 1790856120,
+});
+
+test("invoice acquisition timestamp accepts and canonicalizes nine-digit fractional precision", () => {
+  assert.equal(
+    normalizeInvoiceAcquiredAt("2026-10-02T21:03:25.828762222Z"),
+    "2026-10-02T21:03:25.828Z",
+  );
+  assert.equal(normalizeInvoiceAcquiredAt("2026-10-02T21:03:25.8287622221Z"), null);
 });
 
 test("invoice setup persists A-only evidence and refuses a duplicate pair after interruption", () => {

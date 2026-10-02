@@ -6,6 +6,7 @@ import {
   buildPhase62RunConfig,
   beginInvoiceSetup,
   markInvoiceSetupPartial,
+  normalizeInvoiceAcquiredAt,
   recordInvoiceReceipt,
   setInvoiceIntent,
 } from "./phase45-invoice-setup-core.mjs";
@@ -46,13 +47,14 @@ if (action === "intent" && id === "A") {
   const invoice = raw?.payment_request;
   const decoded = typeof invoice === "string" ? decodeBolt11(invoice) : null;
   const paymentHash = String(raw?.r_hash ?? "").toLowerCase();
-  const createdAt = readFileSync(acquiredPath, "utf8").trim();
+  const acquiredAt = readFileSync(acquiredPath, "utf8").trim();
+  const createdAt = normalizeInvoiceAcquiredAt(acquiredAt);
   const now = Date.now();
   if (typeof invoice !== "string" || !invoice.startsWith("lnbcrt") || decoded?.network !== "regtest" ||
       decoded?.amountSat !== 700 || decoded?.expiry !== 120 || !/^[0-9a-f]{64}$/.test(paymentHash) ||
       decoded?.paymentHash !== paymentHash || !Number.isSafeInteger(decoded?.timestamp) ||
       Math.abs(Math.floor(now / 1000) - decoded.timestamp) > 30 || decoded.expiresAt !== decoded.timestamp + 120 ||
-      !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(createdAt)) throw new Error("invoice_capture_validation_failed");
+      createdAt === null) throw new Error("invoice_capture_validation_failed");
   const invoicePath = `${privateDirectory}/bob-invoice-${suffix}`;
   const hashPath = `${privateDirectory}/bob-payment-hash-${suffix}`;
   const next = recordInvoiceReceipt(state, {
