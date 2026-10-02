@@ -1,4 +1,4 @@
-import { chmodSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import {
   reconcileTwoInvoices,
   safeErrorCode,
@@ -14,6 +14,16 @@ const runConfig = JSON.parse(readFileSync(`${privateDirectory}/phase6-run-config
 const ids = ["A", "B"];
 const expectedInvoices = runConfig.expectedInvoices;
 
+function canonicalAcquiredAt(value) {
+  const match = typeof value === "string"
+    ? /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3,9})Z$/.exec(value)
+    : null;
+  if (!match) return null;
+  const canonical = `${match[1]}.${match[2].slice(0, 3)}Z`;
+  const date = new Date(canonical);
+  return Number.isFinite(date.getTime()) && date.toISOString() === canonical ? canonical : null;
+}
+
 if (phase === "initial") {
   const observations = ids.map((id) => {
     const expected = expectedInvoices.find((item) => item.id === id);
@@ -21,7 +31,7 @@ if (phase === "initial") {
     let acquiredAt = null;
     try {
       lookup = JSON.parse(readFileSync(`${privateDirectory}/bob-lookup-initial-${id.toLowerCase()}.json`, "utf8"));
-      acquiredAt = readFileSync(`${privateDirectory}/bob-lookup-initial-${id.toLowerCase()}.acquired-at`, "utf8").trim();
+      acquiredAt = canonicalAcquiredAt(readFileSync(`${privateDirectory}/bob-lookup-initial-${id.toLowerCase()}.acquired-at`, "utf8").trim());
     } catch {
       lookup = null;
     }
@@ -45,11 +55,6 @@ if (phase === "initial") {
   const target = `${privateDirectory}/bob-initial-evidence.json`;
   writeFileSync(target, `${JSON.stringify(evidence, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
   chmodSync(target, 0o600);
-  for (const id of ids) {
-    const rawPath = `${privateDirectory}/bob-lookup-initial-${id.toLowerCase()}.json`;
-    try { unlinkSync(rawPath); } catch {}
-    try { unlinkSync(`${privateDirectory}/bob-lookup-initial-${id.toLowerCase()}.acquired-at`); } catch {}
-  }
   process.stdout.write(`${JSON.stringify({
     runId: evidence.runId,
     phase: evidence.phase,

@@ -147,6 +147,52 @@ test("B: initial Bob acquisition -> parser -> race preparation does not restamp 
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
+test("initial Bob parser preserves nanosecond acquisition times from the live lookup file shape", () => {
+  const directory = tempDirectory("limitprobe-phase64-initial-ns-");
+  try {
+    const now = Date.now();
+    const acquiredMs = now - 2_000;
+    const acquiredAt = iso(acquiredMs).replace(/\.(\d{3})Z$/, (_match, ms) => `.${ms}123456Z`);
+    const canonicalAcquiredAt = iso(acquiredMs);
+    writeJson(join(directory, "phase6-run-config.json"), { runId: RUN_ID, expectedInvoices });
+    for (const [id, hash] of [["a", HASH_A], ["b", HASH_B]]) {
+      writeJson(join(directory, `bob-lookup-initial-${id}.json`), {
+        r_hash: hash,
+        state: "OPEN",
+        settled: false,
+        amt_paid_sat: "0",
+        amt_paid_msat: "0",
+        settle_date: "0",
+      });
+      writeFileSync(join(directory, `bob-lookup-initial-${id}.acquired-at`), `${acquiredAt}\n`, { mode: 0o600 });
+    }
+
+    const parsed = runParser("initial", directory);
+    assert.equal(parsed.status, 0, parsed.stderr);
+    const initial = JSON.parse(readFileSync(join(directory, "bob-initial-evidence.json"), "utf8"));
+    assert.equal(initial.observations.length, 2);
+    for (const observation of initial.observations) {
+      assert.equal(observation.state, "OPEN");
+      assert.equal(observation.acquiredAt, canonicalAcquiredAt);
+      assert.equal(observation.observedAt, canonicalAcquiredAt);
+      assert.notEqual(observation.observedAt, initial.capturedAt);
+    }
+    for (const id of ["a", "b"]) {
+      assert.equal(existsSync(join(directory, `bob-lookup-initial-${id}.json`)), true);
+      assert.equal(existsSync(join(directory, `bob-lookup-initial-${id}.acquired-at`)), true);
+    }
+    const prepared = prepareInitialReceiverObservations({
+      runId: RUN_ID,
+      expectedInvoices,
+      observations: initial.observations,
+      beforeAt: iso(now),
+      dispatchAtById: { A: iso(now + 1_000), B: iso(now + 1_001) },
+    });
+    assert.equal(prepared.valid, true, prepared.reasons.join(","));
+    assert.equal(prepared.observations.every((item) => item.acquiredAt === item.observedAt), true);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("C: raw NWC capture -> sanitizer -> evaluator -> report preserves NOT_FOUND semantics", () => {
   const { raceEvidence, bobEvidence } = makeEvidence({ settledA: true, settledB: false, terminalB: "CANCELED" });
   const settledAtSeconds = Math.floor(Date.parse(raceEvidence.nwcLookups.find((item) => item.id === "A").settledAt) / 1_000);
