@@ -146,6 +146,52 @@ test("saved c39 collector records with live 9-digit timestamps retain valid rece
   assert.equal(summary.queryAttempts[0].attemptedAt, events[1].attemptedAt);
 });
 
+test("c39 terminal pair stops collection in-window when A cancels and B is settled", () => {
+  const report = JSON.parse(readFileSync(new URL("../reports/phase6.2-final-evidence.json", import.meta.url), "utf8"));
+  const reconciler = readFileSync(new URL("../scripts/phase45-reconcile-bob.sh", import.meta.url), "utf8");
+  const collection = report.reconciliation.collection;
+  const startedEvent = collection.sessions.find((event) => event.recordType === "collector_started");
+  const sessionId = startedEvent.sessionId;
+  const terminalObservationCutoff = "2026-10-02T22:32:21.998Z";
+  const queryCompletionCutoff = "2026-10-02T22:32:22.639Z";
+  const completionAt = "2026-10-02T22:32:22.700Z";
+  const events = [
+    startedEvent,
+    ...collection.queryAttempts
+      .filter((item) => item.completedAt <= queryCompletionCutoff)
+      .map((item) => ({
+        ...item,
+        recordType: "query_attempt",
+        sessionId,
+        runId: report.runId,
+        requestedHash: report.invoiceLifecycle.find((invoice) => invoice.id === item.id).paymentHash,
+      })),
+    ...report.reconciliation.bobObservations
+      .filter((item) => item.observedAt <= terminalObservationCutoff)
+      .map((item) => ({ ...item, recordType: "receiver_observation" })),
+    {
+      recordType: "collector_completed", sessionId, runId: report.runId,
+      deadline: collection.deadline, completedAt: completionAt, completionStatus: "completed_terminal",
+    },
+  ];
+  const invoices = report.invoiceLifecycle.map(({ id, paymentHash, expiresAtUnix }) => ({
+    id, paymentHash, amountSat: 700, expiresAtUnix,
+  }));
+  const summary = summarizeCollectorSession(events, sessionId, invoices, {
+    runStartedAt: "2026-10-02T22:31:05.321Z",
+    expectedDeadline: collection.deadline,
+  });
+
+  assert.equal(report.runId, "c39c3771-bf56-49af-b465-ea0fe7e71e3b");
+  assert.match(reconciler, /\$attempt_b\.state == "SETTLED" and \$attempt_a\.state == "CANCELED" and \$attempt_a\.observedAt >= \$expiry_a/);
+  assert.equal(summary.valid, true, summary.issues.join(","));
+  assert.equal(summary.completionStatus, "completed_terminal");
+  assert.equal(summary.completedAt, completionAt);
+  assert.ok(Date.parse(summary.completedAt) < Date.parse(collection.deadline));
+  assert.equal(summary.observations.filter((item) => item.id === "A").at(-1).state, "CANCELED");
+  assert.equal(summary.observations.filter((item) => item.id === "B").at(-1).state, "SETTLED");
+});
+
 test("deadline completion is rejected when either final query ended early", () => {
   const beforeDeadline = "2026-10-01T10:01:30.900Z";
   const events = journal("completed_deadline", {
@@ -180,7 +226,7 @@ test("terminal completion requires matching, complete receiver amount evidence",
   const events = journal("completed_terminal", {
     observations: [observation("A", HASH_A, "SETTLED", deadline), observation("B", HASH_B, "CANCELED", deadline)],
     queries: [query("A", HASH_A, "success", deadline), query("B", HASH_B, "success", deadline)],
-    completedAt: "2026-10-01T10:01:32.000Z",
+    completedAt: "2026-10-01T10:02:32.000Z",
   });
   const terminalB = events.find((event) => event.recordType === "receiver_observation" && event.id === "B");
   terminalB.returnedHash = HASH_A;
@@ -191,11 +237,11 @@ test("terminal completion requires matching, complete receiver amount evidence",
   const reverseWinner = journal("completed_terminal", {
     observations: [observation("A", HASH_A, "CANCELED", deadline), observation("B", HASH_B, "SETTLED", deadline)],
     queries: [query("A", HASH_A, "success", deadline), query("B", HASH_B, "success", deadline)],
-    completedAt: "2026-10-01T10:01:32.000Z",
+    completedAt: "2026-10-01T10:02:32.000Z",
   });
   const reverseSummary = summarize(reverseWinner);
-  assert.equal(reverseSummary.valid, false);
-  assert.ok(reverseSummary.issues.includes("collector_terminal_condition_unproven"));
+  assert.equal(reverseSummary.valid, true);
+  assert.equal(reverseSummary.completionStatus, "completed_terminal");
 });
 
 test("terminal collection waits for Bob CANCELED after B invoice expiry", () => {

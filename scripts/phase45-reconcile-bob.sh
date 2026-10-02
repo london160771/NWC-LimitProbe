@@ -105,23 +105,27 @@ query_one() {
 }
 
 latest_are_terminal() {
-  local hash_a hash_b expires_at_b expires_at_b_iso
+  local hash_a hash_b expires_at_a expires_at_b expires_at_a_iso expires_at_b_iso
   hash_a="$(tr -d '\r\n' < "$private_dir/bob-payment-hash-a")"
   hash_b="$(tr -d '\r\n' < "$private_dir/bob-payment-hash-b")"
+  expires_at_a="$(jq -er '.expectedInvoices[] | select(.id == "A") | .expiresAtUnix | numbers' "$private_dir/phase6-run-config.json")"
   expires_at_b="$(jq -er '.expectedInvoices[] | select(.id == "B") | .expiresAtUnix | numbers' "$private_dir/phase6-run-config.json")"
+  expires_at_a_iso="$(date -u -d "@$expires_at_a" '+%Y-%m-%dT%H:%M:%S.000Z')"
   expires_at_b_iso="$(date -u -d "@$expires_at_b" '+%Y-%m-%dT%H:%M:%S.000Z')"
-  jq -s -e --arg sid "$session_id" --arg run "$run_id" --arg a "$hash_a" --arg b "$hash_b" --arg expiry "$expires_at_b_iso" '
+  jq -s -e --arg sid "$session_id" --arg run "$run_id" --arg a "$hash_a" --arg b "$hash_b" --arg expiry_a "$expires_at_a_iso" --arg expiry_b "$expires_at_b_iso" '
     [ .[] | select(.recordType == "receiver_observation" and .sessionId == $sid and .runId == $run) ]
     | group_by(.id) | map(sort_by(.observedAt) | last)
     | select(length == 2 and all(.[];
         .errorCode == null and .expectedAmountSat == 700 and .requestedHash == .returnedHash and
+        (.observedAt | type == "string") and
         ((.id == "A" and .requestedHash == $a) or (.id == "B" and .requestedHash == $b)) and
         ((.state == "SETTLED" and .settled == true and .amountPaidSat == 700 and .amountPaidMsat == 700000 and (.settleDateUnix | type == "number" and . > 0) and (.settledAt | type == "string")) or
          ((.state == "CANCELED" or .state == "EXPIRED") and .settled == false and .amountPaidSat == 0 and .amountPaidMsat == 0 and .settleDateUnix == null and .settledAt == null))
       ))
     | (map(select(.id == "A"))[0]) as $attempt_a
     | (map(select(.id == "B"))[0]) as $attempt_b
-    | (($attempt_a.state == "SETTLED" and $attempt_b.state == "CANCELED" and $attempt_b.observedAt >= $expiry) or
+    | (($attempt_a.state == "SETTLED" and $attempt_b.state == "CANCELED" and $attempt_b.observedAt >= $expiry_b) or
+       ($attempt_b.state == "SETTLED" and $attempt_a.state == "CANCELED" and $attempt_a.observedAt >= $expiry_a) or
        ($attempt_a.state == "SETTLED" and $attempt_b.state == "SETTLED"))
   ' "$observations" >/dev/null 2>&1
 }

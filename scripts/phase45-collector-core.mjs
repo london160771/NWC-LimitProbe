@@ -13,6 +13,24 @@ function isoMs(value) {
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === canonical ? parsed : Number.NaN;
 }
 
+function isNaturalUnpaidCancellation(item, expectedInvoice) {
+  const expiresAtMs = Number.isSafeInteger(expectedInvoice?.expiresAtUnix)
+    ? expectedInvoice.expiresAtUnix * 1_000
+    : Number.NaN;
+  const observedAtMs = isoMs(item?.observedAt);
+  return item?.state === "CANCELED" && item?.settled === false &&
+    item?.amountPaidSat === 0 && item?.amountPaidMsat === 0 &&
+    item?.settleDateUnix == null && item?.settledAt == null &&
+    Number.isFinite(expiresAtMs) && Number.isFinite(observedAtMs) && observedAtMs >= expiresAtMs;
+}
+
+function isAllowedTerminalPair(pair, expectedById) {
+  const [attemptA, attemptB] = pair;
+  if (attemptA?.state === "SETTLED" && attemptB?.state === "SETTLED") return true;
+  return (attemptA?.state === "SETTLED" && isNaturalUnpaidCancellation(attemptB, expectedById.get("B"))) ||
+    (attemptB?.state === "SETTLED" && isNaturalUnpaidCancellation(attemptA, expectedById.get("A")));
+}
+
 export function parseCollectorJournal(text) {
   if (typeof text !== "string") return { events: [], issues: ["collector_journal_invalid"] };
   const terminated = /\r?\n$/.test(text);
@@ -178,12 +196,7 @@ export function validatePersistedCollectorEvidence({
     const terminalShape = pair.every((item) => item && TERMINAL.has(item.state) && item.errorCode == null &&
       ((item.state === "SETTLED" && item.settled === true && item.amountPaidSat === 700 && item.amountPaidMsat === 700000 && Number.isSafeInteger(item.settleDateUnix)) ||
        (["CANCELED", "EXPIRED"].includes(item.state) && item.settled === false && item.amountPaidSat === 0 && item.amountPaidMsat === 0)));
-    const terminalPair = pair[0]?.state === "SETTLED" && pair[1]?.state === "SETTLED";
-    const expiresAtMs = Number.isSafeInteger(expected.get("B")?.expiresAtUnix) ? expected.get("B").expiresAtUnix * 1_000 : Number.NaN;
-    const naturalCancellation = pair[1]?.state === "CANCELED" && Number.isFinite(expiresAtMs) &&
-      Number.isFinite(isoMs(pair[1]?.observedAt)) && isoMs(pair[1].observedAt) >= expiresAtMs;
-    const unpaidTerminalPair = pair[0] && TERMINAL.has(pair[0].state) && pair[1]?.state === "CANCELED" && naturalCancellation;
-    if (!terminalShape || (!terminalPair && !unpaidTerminalPair) ||
+    if (!terminalShape || !isAllowedTerminalPair(pair, expected) ||
         (Number.isFinite(topCompletedMs) && receiverObservations.some((item) => item?.sessionId === latestSessionId && isoMs(item?.observedAt) > topCompletedMs))) {
       issues.push("collector_terminal_completion_unproven");
     }
@@ -275,12 +288,7 @@ export function summarizeCollectorSession(events, sessionId, expectedInvoices = 
   if (status === "completed_terminal") {
     const attemptA = lastById.get("A");
     const attemptB = lastById.get("B");
-    const independentlyProvenFail = attemptA?.state === "SETTLED" && attemptB?.state === "SETTLED";
-    const expiresAtMs = Number.isSafeInteger(expectedById.get("B")?.expiresAtUnix) ? expectedById.get("B").expiresAtUnix * 1_000 : Number.NaN;
-    const naturalCancellation = attemptB?.state === "CANCELED" && Number.isFinite(expiresAtMs) &&
-      Number.isFinite(isoMs(attemptB?.observedAt)) && isoMs(attemptB.observedAt) >= expiresAtMs;
-    const expectedTerminalPair = attemptB?.state === "CANCELED" && naturalCancellation && TERMINAL.has(attemptA?.state);
-    if (!expectedTerminalPair && !independentlyProvenFail) issues.push("collector_terminal_condition_unproven");
+    if (!isAllowedTerminalPair([attemptA, attemptB], expectedById)) issues.push("collector_terminal_condition_unproven");
   }
   if (status === "completed_deadline") {
     if (!Number.isFinite(completedMs) || !Number.isFinite(deadlineMs) || completedMs < deadlineMs) {
