@@ -31,7 +31,7 @@ if [[ ! -e "$private_dir" ]]; then mkdir -m 700 "$private_dir" 2>/dev/null || fa
 trap 'rc=$?; if [[ $rc -ne 0 ]]; then printf "PHASE62_FAILED stage=%s exit=%s\n" "$stage" "$rc" >&2; fi' ERR
 source "$workspace_dir/scripts/phase62-run-lock.sh" || fail "phase62_run_lock_helper_unavailable"
 phase62_acquire_run_lock "$private_dir" || fail "phase62_run_already_locked_or_requires_lock_recovery"
-trap 'rc=$?; if [[ $rc -ne 0 ]]; then printf "PHASE62_PRIVATE_EVIDENCE_PRESERVED=true\n" >&2; fi; phase62_release_run_lock || true' EXIT
+trap 'rc=$?; trap - EXIT; if [[ $rc -ne 0 ]]; then printf "PHASE62_PRIVATE_EVIDENCE_PRESERVED=true\n" >&2; fi; phase62_release_run_lock || true; exit "$rc"' EXIT
 
 [[ ! -e "$workspace_dir/reports/phase6.2-final-evidence.json" ]] || fail "phase62_report_already_exists_refusing_overwrite"
 for existing in phase6-run-config.json phase62-invoice-creation-state.json bob-invoice-a bob-invoice-b bob-payment-hash-a bob-payment-hash-b phase6.2-payment-dispatch-started; do
