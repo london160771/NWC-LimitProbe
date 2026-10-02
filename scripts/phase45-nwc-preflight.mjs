@@ -8,7 +8,7 @@ const appConfig = JSON.parse(readFileSync(appConfigFile, "utf8"));
 const requiredScopes = ["get_balance", "get_info", "lookup_invoice", "pay_invoice"];
 const scopes = Array.isArray(appConfig.scopes) ? [...appConfig.scopes].sort() : [];
 const appConfigVerified =
-  appConfig.name === "LimitProbe Phase6.1 Race" &&
+  ["LimitProbe-Phase61-Race", "LimitProbe-Phase62-Final"].includes(appConfig.name) &&
   appConfig.maxAmountSat === 1_000 &&
   appConfig.maxAmountMsat === 1_000_000 &&
   appConfig.budgetUsageSat === 0 &&
@@ -65,7 +65,7 @@ try {
     budget.remainingBudgetMsat !== null && budget.remainingBudgetMsat % 1000 === 0
       ? budget.remainingBudgetMsat / 1000
       : null;
-  const renewalOkay = budget.renewalPeriod === null || budget.renewalPeriod === "never";
+  const renewalOkay = budget.renewalPeriod === "never";
   const ready =
     appConfigVerified &&
     client.encryption === "nip44" &&
@@ -73,6 +73,8 @@ try {
     info?.network === "regtest" &&
     missingMethods.length === 0 &&
     balanceMsat !== null &&
+    budget.valid &&
+    budget.complete &&
     budget.totalBudgetMsat === 1_000_000 &&
     budget.remainingBudgetMsat === 1_000_000 &&
     budget.usedBudgetMsat === 0 &&

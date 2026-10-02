@@ -20,6 +20,9 @@ node_modules/
 /output/
 *.secret
 *.credentials
+*.password
+*.passwd
+*.pwd
 *.rpc
 *rpc*.conf
 *.nwc
@@ -52,3 +55,12 @@ bob-final-observations.jsonl
 phase6-run-config.json
 phase45-race-*.json
 phase6.1-payment-dispatch-started
+phase6.2-payment-dispatch-started
+phase62-invoice-creation-state.json
+phase62-run.lock/
+phase62-app-ready
+*.acquired-at
+invoice-capture*.json
+fresh-nwc-preflight.json
+environment-nwc-health.json
+report-command-summary.json

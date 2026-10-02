@@ -1,4 +1,5 @@
 import {
+  existsSync,
   chmodSync,
   readFileSync,
   writeFileSync,
@@ -6,21 +7,31 @@ import {
 import { decodeBolt11, NWC } from "nostr-core";
 import {
   dispatchTwoPayments,
+  captureBudgetSnapshot,
   normalizeBudgetMsat,
   RECONCILIATION_POLL_INTERVAL_MS,
   RECONCILIATION_WINDOW_MS,
   safeErrorCode,
   sanitizeNwcLookup,
-  sanitizeReceiverObservation,
+  prepareInitialReceiverObservations,
   validateInitialObservations,
+  validateInvoiceLifecycle,
+  REQUIRED_GRACE_SECONDS,
+  EXPECTED_INVOICE_EXPIRY_SECONDS,
 } from "./phase45-core.mjs";
 import { markPostDispatchFailure, persistPrivateProgress } from "./phase45-progress.mjs";
+import {
+  PHASE61_RESUME_INVOICES,
+  PHASE61_RESUME_RUN_ID,
+  validateResumeStartingBudget,
+} from "./phase61-resume-validation.mjs";
 
 const privateDirectory = process.env.PRIVATE_DIR ?? "/run/private";
 const progressFile = `${privateDirectory}/phase45-race-progress.json`;
 const resultFile = `${privateDirectory}/phase45-race-results.json`;
-const sentinelFile = `${privateDirectory}/phase6.1-payment-dispatch-started`;
+const sentinelFile = process.env.DISPATCH_SENTINEL_FILE ?? `${privateDirectory}/phase6.1-payment-dispatch-started`;
 const requiredScopes = ["get_balance", "get_info", "lookup_invoice", "pay_invoice"];
+const RESUME_INITIAL_EVIDENCE_MAX_AGE_MS = 60_000;
 
 function invalidConfiguration() {
   const error = new Error("invalid_phase61_configuration");
@@ -33,6 +44,9 @@ let stage = "read_private_configuration";
 let dispatchEverStarted = false;
 let progress = null;
 try {
+  const resumeMode = process.argv[2] === "--resume-existing-run";
+  if (process.argv.length > (resumeMode ? 4 : 2) || (!resumeMode && process.argv.length > 2)) throw invalidConfiguration();
+  const resumeExpectedRunId = resumeMode ? process.argv[3] : null;
   const appConfig = JSON.parse(readFileSync(`${privateDirectory}/app-config.json`, "utf8"));
   const runConfig = JSON.parse(readFileSync(`${privateDirectory}/phase6-run-config.json`, "utf8"));
   const initialBob = JSON.parse(readFileSync(`${privateDirectory}/bob-initial-evidence.json`, "utf8"));
@@ -40,16 +54,28 @@ try {
   const runId = runConfig.runId;
   const expectedInvoices = runConfig.expectedInvoices;
   if (
-    appConfig.name !== "LimitProbe Phase6.1 Race" ||
+    !["LimitProbe-Phase61-Race", "LimitProbe-Phase62-Final"].includes(appConfig.name) ||
     appConfig.maxAmountSat !== 1_000 ||
     appConfig.maxAmountMsat !== 1_000_000 ||
     appConfig.budgetUsageSat !== 0 ||
     appConfig.budgetRenewal !== "never" ||
     JSON.stringify(actualScopes) !== JSON.stringify(requiredScopes) ||
     typeof runId !== "string" ||
+    runConfig.network !== "regtest" ||
+    runConfig.invoiceExpirySeconds !== EXPECTED_INVOICE_EXPIRY_SECONDS ||
+    runConfig.requiredGraceSeconds !== REQUIRED_GRACE_SECONDS ||
     !Array.isArray(expectedInvoices) || expectedInvoices.length !== 2 ||
     initialBob.runId !== runId || initialBob.phase !== "initial"
   ) throw invalidConfiguration();
+  if (resumeMode) {
+    const capturedAtMs = typeof initialBob.capturedAt === "string" ? Date.parse(initialBob.capturedAt) : Number.NaN;
+    if (
+      resumeExpectedRunId !== PHASE61_RESUME_RUN_ID || runId !== PHASE61_RESUME_RUN_ID ||
+      existsSync(sentinelFile) || existsSync(progressFile) || existsSync(resultFile) ||
+      !Number.isFinite(capturedAtMs) || Date.now() - capturedAtMs < 0 ||
+      Date.now() - capturedAtMs > RESUME_INITIAL_EVIDENCE_MAX_AGE_MS
+    ) throw invalidConfiguration();
+  }
 
   const requests = ["A", "B"].map((id) => {
     const expected = expectedInvoices.find((item) => item.id === id);
@@ -57,13 +83,21 @@ try {
     const invoice = readFileSync(`${privateDirectory}/bob-invoice-${suffix}`, "utf8").trim();
     const paymentHash = readFileSync(`${privateDirectory}/bob-payment-hash-${suffix}`, "utf8").trim().toLowerCase();
     const decoded = decodeBolt11(invoice);
+    const remainingInvoiceLifetimeSeconds = Number.isSafeInteger(decoded?.expiresAt)
+      ? decoded.expiresAt - Math.floor(Date.now() / 1_000)
+      : null;
     if (
       !invoice.startsWith("lnbcrt") || decoded?.network !== "regtest" || decoded?.amountSat !== 700 ||
+      decoded?.expiry !== 120 || remainingInvoiceLifetimeSeconds === null || remainingInvoiceLifetimeSeconds < 15 ||
       decoded?.paymentHash !== paymentHash || expected?.paymentHash !== paymentHash || expected?.amountSat !== 700
     ) throw invalidConfiguration();
-    return { id, invoice, paymentHash, amountSat: 700 };
+    return { id, invoice, paymentHash, amountSat: 700, expiresAtUnix: decoded.expiresAt };
   });
   if (requests[0].paymentHash === requests[1].paymentHash || requests[0].invoice === requests[1].invoice) throw invalidConfiguration();
+  if (resumeMode && requests.some((request) => {
+    const required = PHASE61_RESUME_INVOICES.find((item) => item.id === request.id);
+    return !required || request.paymentHash !== required.paymentHash || request.amountSat !== required.amountSat;
+  })) throw invalidConfiguration();
 
   const initialBobObservations = initialBob.observations;
   if (!Array.isArray(initialBobObservations)) throw invalidConfiguration();
@@ -82,42 +116,40 @@ try {
   const budgetResponse = await client.getBudget();
   const budget = normalizeBudgetMsat(budgetResponse);
   const startingBudgetCapturedAt = new Date().toISOString();
-  if (
-    !budget.valid || !budget.complete || budget.totalBudgetMsat !== 1_000_000 ||
-    budget.usedBudgetMsat !== 0 || budget.remainingBudgetMsat !== 1_000_000 ||
-    budget.renewalPeriod !== null && budget.renewalPeriod !== "never"
-  ) throw invalidConfiguration();
-  const startingBudget = {
-    totalBudgetMsat: budget.totalBudgetMsat,
-    usedBudgetMsat: budget.usedBudgetMsat,
-    remainingBudgetMsat: budget.remainingBudgetMsat,
-    renewalPeriod: appConfig.budgetRenewal,
-    reportedRenewalPeriod: budget.renewalPeriod,
-    capturedAt: startingBudgetCapturedAt,
-    runId,
-    verified: true,
-  };
-  const initialValidation = validateInitialObservations({
+  const resumeBudget = validateResumeStartingBudget({ budgetResponse, appConfig });
+  if (!resumeBudget.valid || !budget.valid || !budget.complete) throw invalidConfiguration();
+  if (resumeMode) {
+    const capturedAtMs = Date.parse(initialBob.capturedAt);
+    if (Date.now() - capturedAtMs < 0 || Date.now() - capturedAtMs > RESUME_INITIAL_EVIDENCE_MAX_AGE_MS) {
+      throw invalidConfiguration();
+    }
+  }
+  const startingBudget = captureBudgetSnapshot(budgetResponse, { kind: "starting", runId, observedAt: startingBudgetCapturedAt });
+  startingBudget.renewalPeriod = appConfig.budgetRenewal;
+  startingBudget.reportedRenewalPeriod = budget.renewalPeriod;
+  startingBudget.verified = startingBudget.valid && startingBudget.complete;
+  const initialPrepared = prepareInitialReceiverObservations({
     runId,
     expectedInvoices: requests.map(({ id, paymentHash, amountSat }) => ({ id, paymentHash, amountSat })),
     observations: initialBobObservations,
     beforeAt: startingBudgetCapturedAt,
   });
-  if (!initialValidation.valid) throw invalidConfiguration();
-  const sanitizedInitialBobObservations = initialBobObservations.map((item) => sanitizeReceiverObservation({
-    runId,
-    id: item.id,
-    requestedHash: item.requestedHash,
-    expectedAmountSat: item.expectedAmountSat,
-    lookup: {
-      r_hash: item.returnedHash,
-      state: item.state,
-      settled: item.settled,
-      amt_paid_sat: item.amountPaidSat,
-      settle_date: item.settleDateUnix,
-    },
-    observedAt: item.observedAt,
-  }));
+  if (!initialPrepared.valid) throw invalidConfiguration();
+  const sanitizedInitialBobObservations = initialPrepared.observations;
+  const invoiceLifecycle = requests.map((request) => {
+    const receipt = runConfig.invoices?.find((item) => item.id === request.id);
+    return {
+      id: request.id,
+      paymentHash: request.paymentHash,
+      createdAt: receipt?.createdAt ?? null,
+      invoiceTimestampUnix: receipt?.invoiceTimestampUnix ?? null,
+      expirySeconds: receipt?.expirySeconds ?? null,
+      expiresAtUnix: request.expiresAtUnix,
+      dispatchAt: null,
+      reconciliationDeadline: null,
+      requiredGraceSeconds: REQUIRED_GRACE_SECONDS,
+    };
+  });
   const requestsPreparedAt = new Date().toISOString();
 
   progress = {
@@ -130,9 +162,14 @@ try {
     relay: "ws://limitprobe-relay:8080",
     encryption: "nip44",
     encryptionVerified: true,
+    testExclusiveInvoices: runConfig.invoicesCreatedForRun === true,
+    noOtherPayerPath: runConfig.noOtherPayerPathVerified === true,
     requestsPreparedAt,
     startingBudget,
     initialBobObservations: sanitizedInitialBobObservations,
+    invoiceLifecycle,
+    requiredGraceSeconds: REQUIRED_GRACE_SECONDS,
+    expectedInvoiceExpirySeconds: EXPECTED_INVOICE_EXPIRY_SECONDS,
     reconciliationWindowMs: RECONCILIATION_WINDOW_MS,
     reconciliationPollIntervalMs: RECONCILIATION_POLL_INTERVAL_MS,
     reconciliationDeadline: null,
@@ -155,6 +192,33 @@ try {
     {
       runId,
       beforeRelease: () => {
+        const dispatchCheckAt = new Date().toISOString();
+        const dispatchNowUnix = Math.floor(Date.now() / 1_000);
+        if (requests.some((request) => request.expiresAtUnix - dispatchNowUnix < 15)) throw invalidConfiguration();
+        const dispatchFreshness = validateInitialObservations({
+          runId,
+          expectedInvoices: requests.map(({ id, paymentHash, amountSat }) => ({ id, paymentHash, amountSat })),
+          observations: sanitizedInitialBobObservations,
+          beforeAt: dispatchCheckAt,
+          dispatchAtById: { A: dispatchCheckAt, B: dispatchCheckAt },
+        });
+        if (!dispatchFreshness.valid) throw invalidConfiguration();
+        const candidateDeadline = new Date(Date.now() + RECONCILIATION_WINDOW_MS).toISOString();
+        for (const lifecycle of invoiceLifecycle) {
+          lifecycle.dispatchAt = dispatchCheckAt;
+          lifecycle.reconciliationDeadline = candidateDeadline;
+          const result = validateInvoiceLifecycle({
+            createdAt: lifecycle.createdAt,
+            invoiceTimestampUnix: lifecycle.invoiceTimestampUnix,
+            expirySeconds: lifecycle.expirySeconds,
+            expiresAtUnix: lifecycle.expiresAtUnix,
+            dispatchAt: dispatchCheckAt,
+            reconciliationDeadline: candidateDeadline,
+            requiredGraceSeconds: REQUIRED_GRACE_SECONDS,
+            nowAt: dispatchCheckAt,
+          });
+          if (!result.valid) throw invalidConfiguration();
+        }
         dispatchEverStarted = true;
         progress.paymentMayHaveBeenDispatched = true;
         progress.stage = "barrier_armed_payment_may_have_been_dispatched";
@@ -166,6 +230,22 @@ try {
         progress.barrierReleasedAt = barrierReleasedAt;
         progress.barrierReleaseMonotonicMs = barrierReleaseMonotonicMs;
         progress.reconciliationDeadline = new Date(Date.parse(barrierReleasedAt) + RECONCILIATION_WINDOW_MS).toISOString();
+        for (const lifecycle of progress.invoiceLifecycle) {
+          lifecycle.reconciliationDeadline = progress.reconciliationDeadline;
+          const dispatched = attempts.find((item) => item.id === lifecycle.id);
+          lifecycle.dispatchAt = dispatched?.dispatchedAt ?? lifecycle.dispatchAt;
+          const validation = validateInvoiceLifecycle({
+            createdAt: lifecycle.createdAt,
+            invoiceTimestampUnix: lifecycle.invoiceTimestampUnix,
+            expirySeconds: lifecycle.expirySeconds,
+            expiresAtUnix: lifecycle.expiresAtUnix,
+            dispatchAt: lifecycle.dispatchAt,
+            reconciliationDeadline: lifecycle.reconciliationDeadline,
+            requiredGraceSeconds: REQUIRED_GRACE_SECONDS,
+            nowAt: lifecycle.dispatchAt,
+          });
+          if (!validation.valid) throw invalidConfiguration();
+        }
         progress.dispatchDeltaMs = Number(Math.abs(attempts[0].dispatchMonotonicMs - attempts[1].dispatchMonotonicMs).toFixed(3));
         progress.attempts = attempts.map((attempt) => ({
           ...attempt,
@@ -208,14 +288,7 @@ try {
   progress.stage = "nwc_lookup_complete";
   persistPrivateProgress(progressFile, progress);
 
-  stage = "budget_after_race";
-  try {
-    progress.budgetAfter = normalizeBudgetMsat(await client.getBudget());
-  } catch (error) {
-    progress.budgetAfter = null;
-    progress.budgetAfterErrorCode = safeErrorCode(error);
-  }
-  progress.stage = "race_complete";
+  progress.stage = "race_complete_waiting_for_receiver_reconciliation";
   persistPrivateProgress(progressFile, progress);
   persistPrivateProgress(resultFile, progress);
   process.stdout.write(`${JSON.stringify({

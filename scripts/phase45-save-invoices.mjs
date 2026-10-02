@@ -4,6 +4,7 @@ import { decodeBolt11 } from "nostr-core";
 
 const privateDirectory = process.env.PRIVATE_DIR ?? "/run/private";
 const ids = ["a", "b"];
+const expectedExpirySeconds = 120;
 const prepared = ids.map((id) => {
   let raw;
   try {
@@ -22,6 +23,8 @@ const prepared = ids.map((id) => {
     !/^[0-9a-f]{64}$/.test(paymentHash) ||
     decoded?.network !== "regtest" ||
     decoded?.amountSat !== 700 ||
+    decoded?.expiry !== expectedExpirySeconds ||
+    !Number.isSafeInteger(decoded?.timestamp) || Math.abs(Math.floor(Date.now() / 1_000) - decoded.timestamp) > 30 ||
     decoded?.paymentHash !== paymentHash
   ) {
     throw new Error(`bob_invoice_${id}_validation_failed`);
@@ -51,6 +54,16 @@ const runConfig = {
   runId: randomUUID(),
   createdAt: new Date().toISOString(),
   network: "regtest",
+  invoicesCreatedForRun: true,
+  noOtherPayerPathVerified: process.env.NWC_LIMITPROBE_SINGLE_PAYER_CONFIRMED === "1",
+  invoiceExpirySeconds: expectedExpirySeconds,
+  invoices: prepared.map(({ id, paymentHash, amountSat }) => ({
+    id: id.toUpperCase(),
+    paymentHash,
+    amountSat,
+    invoiceIssuedAtUnix: decodeBolt11(prepared.find((item) => item.id === id).invoice).timestamp,
+    invoiceExpiresAtUnix: decodeBolt11(prepared.find((item) => item.id === id).invoice).expiresAt,
+  })),
   expectedInvoices: prepared.map(({ id, paymentHash, amountSat }) => ({
     id: id.toUpperCase(),
     paymentHash,
@@ -73,6 +86,9 @@ process.stdout.write(
     runId: runConfig.runId,
     invoices: prepared.map(({ id, paymentHash, amountSat }) => ({ id, paymentHash, amountSat })),
     network: "regtest",
+    invoiceExpirySeconds: expectedExpirySeconds,
+    invoicesCreatedForRun: runConfig.invoicesCreatedForRun,
+    noOtherPayerPathVerified: runConfig.noOtherPayerPathVerified,
     bolt11Redacted: true,
   })}\n`,
 );

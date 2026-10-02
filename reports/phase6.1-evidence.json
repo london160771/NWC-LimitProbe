@@ -1,0 +1,245 @@
+{
+  "reportVersion": "2.1.0",
+  "generatedAt": "2026-10-01T22:16:28.017Z",
+  "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+  "network": "regtest",
+  "walletUnderTest": "Alby Hub / NWC",
+  "runState": {
+    "stage": "final_nwc_lookup_complete",
+    "paymentMayHaveBeenDispatched": true,
+    "failureCode": null
+  },
+  "configuredBudgetSats": 1000,
+  "renewal": "never",
+  "requestCount": 2,
+  "requestedAmountPerInvoiceSats": 700,
+  "startingBudget": {
+    "capturedAt": "2026-10-01T22:16:04.048Z",
+    "totalBudgetMsat": 1000000,
+    "usedBudgetMsat": 0,
+    "spendableBudgetMsat": 1000000,
+    "spendableBudgetSats": 1000,
+    "verified": true,
+    "renewalPeriod": "never"
+  },
+  "requestsPreparedAt": "2026-10-01T22:16:04.054Z",
+  "barrierReleasedAt": "2026-10-01T22:16:04.069Z",
+  "barrierReleaseMonotonicMs": 19169.820423,
+  "dispatchTimingBoundary": "NWC client call-start",
+  "dispatchDeltaMs": 1.747,
+  "reconciliation": {
+    "deadline": "2026-10-01T22:17:34.069Z",
+    "windowMs": 90000,
+    "pollIntervalMs": 2000,
+    "bobObservationCount": 2,
+    "initialBobObservations": [
+      {
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "id": "A",
+        "requestedHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "returnedHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "expectedAmountSat": 700,
+        "state": "OPEN",
+        "settled": false,
+        "amountPaidSat": 0,
+        "settleDateUnix": 0,
+        "settledAt": null,
+        "observedAt": "2026-10-01T22:15:42.656Z",
+        "errorCode": null
+      },
+      {
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "id": "B",
+        "requestedHash": "dad7fdbf184e044dae616748997638bcf9c62ebb393008c52cf534c8d01a350f",
+        "returnedHash": "dad7fdbf184e044dae616748997638bcf9c62ebb393008c52cf534c8d01a350f",
+        "expectedAmountSat": 700,
+        "state": "OPEN",
+        "settled": false,
+        "amountPaidSat": 0,
+        "settleDateUnix": 0,
+        "settledAt": null,
+        "observedAt": "2026-10-01T22:15:42.658Z",
+        "errorCode": null
+      }
+    ],
+    "bobObservations": [
+      {
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "id": "A",
+        "requestedHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "returnedHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "expectedAmountSat": 700,
+        "state": "SETTLED",
+        "settled": true,
+        "amountPaidSat": 700,
+        "settleDateUnix": 1790892964,
+        "settledAt": "2026-10-01T22:16:04.000Z",
+        "observedAt": "2026-10-01T22:16:07.343Z",
+        "errorCode": null
+      },
+      {
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "id": "B",
+        "requestedHash": "dad7fdbf184e044dae616748997638bcf9c62ebb393008c52cf534c8d01a350f",
+        "returnedHash": "dad7fdbf184e044dae616748997638bcf9c62ebb393008c52cf534c8d01a350f",
+        "expectedAmountSat": 700,
+        "state": "OPEN",
+        "settled": false,
+        "amountPaidSat": 0,
+        "settleDateUnix": 0,
+        "settledAt": null,
+        "observedAt": "2026-10-01T22:16:09.472Z",
+        "errorCode": null
+      }
+    ],
+    "nwcLookups": [
+      {
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "id": "A",
+        "requestedHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "returnedHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "expectedAmountSat": 700,
+        "state": "SETTLED",
+        "amountMsat": 700000,
+        "feesPaidMsat": 0,
+        "settledAt": "2026-10-01T22:16:04.000Z",
+        "observedAt": "2026-10-01T22:16:04.605Z",
+        "errorCode": null
+      },
+      {
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "id": "B",
+        "requestedHash": "dad7fdbf184e044dae616748997638bcf9c62ebb393008c52cf534c8d01a350f",
+        "returnedHash": null,
+        "expectedAmountSat": 700,
+        "state": null,
+        "amountMsat": null,
+        "feesPaidMsat": null,
+        "settledAt": null,
+        "observedAt": "2026-10-01T22:16:04.635Z",
+        "errorCode": "NOT_FOUND"
+      },
+      {
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "id": "B",
+        "requestedHash": "dad7fdbf184e044dae616748997638bcf9c62ebb393008c52cf534c8d01a350f",
+        "returnedHash": null,
+        "expectedAmountSat": 700,
+        "state": null,
+        "amountMsat": null,
+        "feesPaidMsat": null,
+        "settledAt": null,
+        "observedAt": "2026-10-01T22:16:27.974Z",
+        "errorCode": "NOT_FOUND"
+      },
+      {
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "id": "A",
+        "requestedHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "returnedHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "expectedAmountSat": 700,
+        "state": "SETTLED",
+        "amountMsat": 700000,
+        "feesPaidMsat": 0,
+        "settledAt": "2026-10-01T22:16:04.000Z",
+        "observedAt": "2026-10-01T22:16:28.017Z",
+        "errorCode": null
+      }
+    ],
+    "invoices": [
+      {
+        "id": "A",
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "paymentHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+        "expectedAmountSats": 700,
+        "reconciled": true,
+        "terminal": true,
+        "state": "SETTLED",
+        "settled": true,
+        "amountPaidSats": 700,
+        "settledAt": "2026-10-01T22:16:04.000Z",
+        "latestObservedAt": "2026-10-01T22:16:07.343Z",
+        "observationCount": 1,
+        "reasonCodes": []
+      },
+      {
+        "id": "B",
+        "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+        "paymentHash": "dad7fdbf184e044dae616748997638bcf9c62ebb393008c52cf534c8d01a350f",
+        "expectedAmountSats": 700,
+        "reconciled": false,
+        "terminal": false,
+        "state": "OPEN",
+        "settled": null,
+        "amountPaidSats": null,
+        "settledAt": null,
+        "latestObservedAt": "2026-10-01T22:16:09.472Z",
+        "observationCount": 1,
+        "reasonCodes": [
+          "receiver_unresolved_before_deadline"
+        ]
+      }
+    ]
+  },
+  "attempts": [
+    {
+      "id": "A",
+      "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+      "paymentHash": "b8049cdedb7e23a789af18f34eea0ab5d5ab7fb2e961dbea4d6747ebc95863b7",
+      "requestedAmountSats": 700,
+      "barrierReleasedAt": "2026-10-01T22:16:04.069Z",
+      "dispatchedAt": "2026-10-01T22:16:04.069Z",
+      "dispatchMonotonicMs": 19169.944223,
+      "responseAt": "2026-10-01T22:16:04.527Z",
+      "responseMonotonicMs": 19628.468334,
+      "nwcResult": {
+        "status": "success",
+        "errorCode": null
+      },
+      "reportedFeesMsat": 0
+    },
+    {
+      "id": "B",
+      "runId": "b542cedc-c9dc-4baf-8d87-58de1bb02a5b",
+      "paymentHash": "dad7fdbf184e044dae616748997638bcf9c62ebb393008c52cf534c8d01a350f",
+      "requestedAmountSats": 700,
+      "barrierReleasedAt": "2026-10-01T22:16:04.069Z",
+      "dispatchedAt": "2026-10-01T22:16:04.070Z",
+      "dispatchMonotonicMs": 19171.690823,
+      "responseAt": "2026-10-01T22:16:04.216Z",
+      "responseMonotonicMs": 19317.523227,
+      "nwcResult": {
+        "status": "error",
+        "errorCode": "QUOTA_EXCEEDED"
+      },
+      "reportedFeesMsat": null
+    }
+  ],
+  "confirmedSettledPrincipalMsat": 700000,
+  "independentlySettledPrincipalSats": null,
+  "postRaceBudget": {
+    "available": true,
+    "valid": true,
+    "totalBudgetMsat": 1000000,
+    "usedBudgetMsat": 700000,
+    "remainingBudgetMsat": 300000,
+    "renewalPeriod": "never",
+    "issues": []
+  },
+  "invariant": {
+    "expression": "totalSettledPrincipalSats * 1000 <= startingSpendableBudgetMsat",
+    "startingSpendableBudgetMsat": 1000000,
+    "independentlySettledPrincipalSats": null,
+    "holds": null
+  },
+  "finalClassification": "INCONCLUSIVE",
+  "evidenceCompleteness": {
+    "complete": false,
+    "missingOrInvalid": [
+      "nwc_final_lookup_incomplete",
+      "nwc_lookup_evidence_incomplete_or_contradictory",
+      "receiver_unresolved_before_deadline"
+    ],
+    "supplementaryIssues": []
+  }
+}
