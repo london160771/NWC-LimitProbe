@@ -62,9 +62,13 @@ function integer(value, { allowNegative = false } = {}) {
 }
 
 function timestamp(value) {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return null;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) && date.toISOString() === value ? value : null;
+  const match = typeof value === "string"
+    ? /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3,9})Z$/.exec(value)
+    : null;
+  if (!match) return null;
+  const canonical = `${match[1]}.${match[2].slice(0, 3)}Z`;
+  const date = new Date(canonical);
+  return Number.isFinite(date.getTime()) && date.toISOString() === canonical ? canonical : null;
 }
 
 function hash(value) {
@@ -282,7 +286,15 @@ export function buildEvidenceReport({ raceEvidence, bobEvidence, generatedAt, in
           status: ["success", "query_timeout", "collector_error"].includes(item?.status) ? item.status : "collector_error",
     errorCode: item?.errorCode == null ? null : safeErrorCode(item.errorCode),
         })).sort((a, b) => (a.attemptedAt ?? "").localeCompare(b.attemptedAt ?? "") || (a.id ?? "").localeCompare(b.id ?? "")) : [],
-        issues: Array.isArray(bob.collectionIssues) ? bob.collectionIssues.filter((item) => SAFE_COLLECTION_ISSUES.has(item)).sort() : [],
+        // Re-derive collector validation from the raw, bound evidence above.
+        // Persisted validation summaries may have been produced by an older
+        // parser and must not survive once the underlying timestamps are valid.
+        issues: [...new Set([
+          ...(Array.isArray(evaluated.collectorValidation?.issues) ? evaluated.collectorValidation.issues : []),
+          ...(Array.isArray(bob.collectionIssues)
+            ? bob.collectionIssues.filter((item) => ["collector_trailing_record_incomplete", "collector_journal_invalid"].includes(item))
+            : []),
+        ])].filter((item) => SAFE_COLLECTION_ISSUES.has(item)).sort(),
         sessions: Array.isArray(bob.collectionSessions) ? bob.collectionSessions.map((session) => ({
           sessionId: typeof session?.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(session.sessionId) ? session.sessionId.toLowerCase() : null,
           runId: runId(session?.runId),

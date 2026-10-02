@@ -51,9 +51,16 @@ function strictInteger(value, { allowNegative = false } = {}) {
 }
 
 function safeTimestamp(value) {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return null;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) && date.toISOString() === value ? value : null;
+  const match = typeof value === "string"
+    ? /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3,9})Z$/.exec(value)
+    : null;
+  if (!match) return null;
+  // Runtime timestamps may carry nanoseconds. The evaluator compares wall-clock
+  // observations at millisecond precision, so validate the source and project
+  // it to a canonical millisecond timestamp instead of rejecting it.
+  const canonical = `${match[1]}.${match[2].slice(0, 3)}Z`;
+  const date = new Date(canonical);
+  return Number.isFinite(date.getTime()) && date.toISOString() === canonical ? canonical : null;
 }
 
 function safeHash(value) {

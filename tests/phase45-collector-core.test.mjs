@@ -94,6 +94,58 @@ test("journal corruption in the middle stops parsing and is not skipped", () => 
   assert.deepEqual(parsed.issues, ["collector_journal_invalid"]);
 });
 
+test("saved c39 collector records with live 9-digit timestamps retain valid receiver provenance", () => {
+  const runId = "c39c3771-bf56-49af-b465-ea0fe7e71e3b";
+  const sessionId = "a2f5625a-e890-4d51-aca9-745b024049bb";
+  const hashA = "e0e857dd5f31471a4f26ee51578d622d3e1f45f6af6f6213fe921f7976c2ffc3";
+  const hashB = "4e7baada53e011eaf88998a91f3f157bd7d51948fe1dc5838356fa4d1b2b2706";
+  const liveDeadline = "2026-10-02T22:33:49.641Z";
+  const liveStartedAt = "2026-10-02T22:31:21.298859200Z";
+  const liveCompletedAt = "2026-10-02T22:33:59.928970524Z";
+  const invoices = [
+    { id: "A", paymentHash: hashA, amountSat: 700 },
+    { id: "B", paymentHash: hashB, amountSat: 700 },
+  ];
+  const events = [
+    { recordType: "collector_started", sessionId, runId, startedAt: liveStartedAt, deadline: liveDeadline },
+    {
+      recordType: "query_attempt", sessionId, runId, id: "A", requestedHash: hashA,
+      attemptedAt: "2026-10-02T22:33:55.636998004Z", completedAt: "2026-10-02T22:33:57.651808667Z",
+      status: "success", errorCode: null,
+    },
+    {
+      recordType: "receiver_observation", sessionId, runId, id: "A", requestedHash: hashA, returnedHash: hashA,
+      expectedAmountSat: 700, state: "CANCELED", settled: false, amountPaidSat: 0, amountPaidMsat: 0,
+      settleDateUnix: null, settledAt: null, observedAt: "2026-10-02T22:33:57.169Z", errorCode: null,
+    },
+    {
+      recordType: "query_attempt", sessionId, runId, id: "B", requestedHash: hashB,
+      attemptedAt: "2026-10-02T22:33:57.831488863Z", completedAt: "2026-10-02T22:33:59.742370528Z",
+      status: "success", errorCode: null,
+    },
+    {
+      recordType: "receiver_observation", sessionId, runId, id: "B", requestedHash: hashB, returnedHash: hashB,
+      expectedAmountSat: 700, state: "SETTLED", settled: true, amountPaidSat: 700, amountPaidMsat: 700_000,
+      settleDateUnix: 1_790_980_280, settledAt: "2026-10-02T22:31:20.000Z",
+      observedAt: "2026-10-02T22:33:59.264Z", errorCode: null,
+    },
+    { recordType: "collector_completed", sessionId, runId, deadline: liveDeadline, completedAt: liveCompletedAt, completionStatus: "completed_deadline" },
+  ];
+  const serialized = `${events.map((event) => JSON.stringify(event)).join("\n")}\n`;
+  const parsed = parseCollectorJournal(serialized);
+  const summary = summarizeCollectorSession(parsed.events, sessionId, invoices, {
+    runStartedAt: "2026-10-02T22:31:05.321Z",
+    expectedDeadline: liveDeadline,
+  });
+
+  assert.deepEqual(parsed.issues, []);
+  assert.equal(summary.valid, true);
+  assert.equal(summary.proofValid, true);
+  assert.equal(summary.startedAt, liveStartedAt);
+  assert.equal(summary.completedAt, liveCompletedAt);
+  assert.equal(summary.queryAttempts[0].attemptedAt, events[1].attemptedAt);
+});
+
 test("deadline completion is rejected when either final query ended early", () => {
   const beforeDeadline = "2026-10-01T10:01:30.900Z";
   const events = journal("completed_deadline", {

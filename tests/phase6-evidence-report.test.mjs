@@ -71,6 +71,34 @@ test("report includes required run binding, timing, lookup, and observation fiel
   assert.ok(result.invoiceLifecycle[0].reconciliationDeadline);
 });
 
+test("report preserves collector timestamps captured with nanosecond precision", () => {
+  const input = makeEvidence();
+  const withNanoseconds = (value) => value.replace(/\.(\d{3})Z$/, (_match, milliseconds) => `.${milliseconds}000001Z`);
+  input.bobEvidence.startedAt = withNanoseconds(input.bobEvidence.startedAt);
+  input.bobEvidence.completedAt = withNanoseconds(input.bobEvidence.completedAt);
+  for (const event of input.bobEvidence.collectionSessions) {
+    if (event.startedAt) event.startedAt = withNanoseconds(event.startedAt);
+    if (event.completedAt) event.completedAt = withNanoseconds(event.completedAt);
+  }
+  const result = buildEvidenceReport({ ...input, generatedAt: GENERATED_AT });
+  assert.equal(result.reconciliation.collection.startedAt, makeEvidence().bobEvidence.startedAt);
+  assert.equal(result.reconciliation.collection.completedAt, makeEvidence().bobEvidence.completedAt);
+  assert.equal(result.reconciliation.collection.sessions[0].startedAt, makeEvidence().bobEvidence.collectionSessions[0].startedAt);
+  assert.equal(result.evidenceCompleteness.supplementaryIssues.includes("bob_completion_timestamp_missing_or_before_observation"), false);
+  assert.equal(result.evidenceCompleteness.supplementaryIssues.includes("collector_session_chronology_invalid"), false);
+});
+
+test("report re-derives collector issues instead of exporting stale persisted timestamp failures", () => {
+  const input = makeEvidence();
+  input.bobEvidence.collectionIssues = [
+    "collector_session_chronology_invalid",
+    "collector_query_chronology_or_binding_invalid",
+    "collector_trailing_record_incomplete",
+  ];
+  const result = buildEvidenceReport({ ...input, generatedAt: GENERATED_AT });
+  assert.deepEqual(result.reconciliation.collection.issues, ["collector_trailing_record_incomplete"]);
+});
+
 test("report CLI falls back to bound dispatch progress when results are absent and preserves FAIL", () => {
   const directory = mkdtempSync(join(tmpdir(), "nwc-phase62-report-fallback-"));
   try {

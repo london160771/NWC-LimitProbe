@@ -4,9 +4,13 @@ const COMPLETION = new Set(["completed_deadline", "completed_terminal", "interru
 const TERMINAL = new Set(["SETTLED", "CANCELED", "EXPIRED"]);
 
 function isoMs(value) {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return Number.NaN;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value ? parsed : Number.NaN;
+  const match = typeof value === "string"
+    ? /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3,9})Z$/.exec(value)
+    : null;
+  if (!match) return Number.NaN;
+  const canonical = `${match[1]}.${match[2].slice(0, 3)}Z`;
+  const parsed = Date.parse(canonical);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === canonical ? parsed : Number.NaN;
 }
 
 export function parseCollectorJournal(text) {
