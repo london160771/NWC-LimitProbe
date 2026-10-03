@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f5f1" />
+    <meta name="description" content="LimitProbe stress-tests Nostr Wallet Connect spending limits under concurrent Lightning payment pressure." />
+    <title>LimitProbe — NWC spending limit test</title>
+    <link rel="stylesheet" href="/dashboard.css" />
+    <script src="/dashboard.js" type="module"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header page-shell">
+      <a class="brand" href="#top" aria-label="LimitProbe home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>Limit<span class="brand-light">Probe</span></span>
+      </a>
+      <div class="header-meta">
+        <span class="environment"><span class="status-dot"></span> SANDBOX / LIVE</span>
+        <a class="header-link" href="#verified-live">Evidence <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
+
+    <main id="main" class="page-shell" data-state="loading">
+      <section id="top" class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-rule"></span> NWC SPENDING-LIMIT TEST</p>
+          <h1 id="hero-title">Can your AI agent <span>overspend</span> its Bitcoin wallet?</h1>
+          <p class="hero-description">LimitProbe stress-tests Nostr Wallet Connect spending limits under concurrent Lightning payment pressure.</p>
+          <div class="hero-actions">
+            <button class="button button-primary button-large" type="button" data-run-sandbox>Run Sandbox Test <span aria-hidden="true">→</span></button>
+            <a class="button button-secondary button-large" href="#verified-live">View Verified Live PASS <span aria-hidden="true">↓</span></a>
+          </div>
+          <p class="hero-safety"><span class="proof-check" aria-hidden="true">✓</span> Sandbox runs in this browser. No wallet or Lightning calls.</p>
+        </div>
+        <aside class="verdict-card" aria-label="Latest run classification">
+          <div class="verdict-top"><span class="verdict-label">VERIFIED LIVE TEST</span><span class="live-chip"><span></span> REAL REGTEST RUN</span></div>
+          <div class="verdict-main"><span id="classification" class="verdict-word">—</span><span class="verdict-check" aria-hidden="true">✓</span></div>
+          <p id="run-id" class="run-id">Loading evidence…</p>
+          <p id="load-message" class="load-message" role="status" aria-live="polite">Reading committed live evidence</p>
+        </aside>
+      </section>
+
+      <section id="sandbox-test" class="section-block sandbox-section" aria-labelledby="sandbox-title">
+        <div class="section-heading compact-heading">
+          <div><p class="eyebrow">01 <span class="eyebrow-rule"></span> SANDBOX TEST</p><h2 id="sandbox-title">Try the limit, safely.</h2></div>
+          <span class="sandbox-chip"><span aria-hidden="true">◉</span> SIMULATION ONLY</span>
+        </div>
+        <div class="sandbox-grid">
+          <div class="sandbox-controls">
+            <p class="sandbox-label">A WALLET-LIMIT SIMULATION</p>
+            <h3>One 1,000 sat budget. Two 700 sat requests.</h3>
+            <p>See how one shared spending limit handles two payment attempts released together. This sandbox uses no live wallet, NWC connection, or Lightning network.</p>
+            <button class="button button-primary button-large sandbox-run-button" type="button" data-run-sandbox>Run Sandbox Test <span aria-hidden="true">→</span></button>
+            <p id="sandbox-status" class="sandbox-status" role="status" aria-live="polite">Ready. Run a fresh simulation whenever you like.</p>
+            <ol id="sandbox-progress" class="sandbox-progress" aria-label="Sandbox test progress">
+              <li data-step="prepare"><span class="progress-mark">1</span><span>Preparing sandbox</span></li>
+              <li data-step="budget"><span class="progress-mark">2</span><span>Applying 1,000 sat spending limit</span></li>
+              <li data-step="invoices"><span class="progress-mark">3</span><span>Creating simulated payment attempts</span></li>
+              <li data-step="dispatch"><span class="progress-mark">4</span><span>Dispatching simulated concurrent payments</span></li>
+              <li data-step="reconcile"><span class="progress-mark">5</span><span>Reconciling simulated result</span></li>
+              <li data-step="evidence"><span class="progress-mark">6</span><span>Generating evidence</span></li>
+              <li data-step="classification"><span class="progress-mark">7</span><span>PASS / FAIL / INCONCLUSIVE</span></li>
+            </ol>
+          </div>
+          <div id="sandbox-stage" class="sandbox-stage" data-state="idle" aria-label="Sandbox results">
+            <div class="sandbox-stage-head"><span>Sandbox Test</span><span class="sandbox-mode">SANDBOX SIMULATION</span></div>
+            <div id="sandbox-empty" class="sandbox-empty">
+              <span class="sandbox-wallet-glyph" aria-hidden="true">₿</span>
+              <strong>Ready to test the limit?</strong>
+              <span>Two 700 sat attempts · 1,000 sat budget</span>
+              <div class="sandbox-preview-bar" aria-hidden="true"><i></i><i></i></div>
+              <small>One settles. The remaining request exceeds the simulated budget.</small>
+            </div>
+            <div id="sandbox-results" class="sandbox-results" hidden>
+              <div class="sandbox-result-heading"><div><span class="sandbox-label">FRESH SANDBOX RUN</span><strong id="sandbox-classification">PASS</strong></div><span id="sandbox-run-id" class="sandbox-run-id"></span></div>
+              <p class="sandbox-live-proof-note">Want the real proof? This same limit test passed on NWC + Lightning.</p>
+              <div class="sandbox-attempts">
+                <div class="sandbox-attempt"><span class="sandbox-attempt-id">A</span><span><strong>Payment A</strong><small>700 sats</small></span><b id="sandbox-attempt-a">—</b></div>
+                <div class="sandbox-attempt"><span class="sandbox-attempt-id sandbox-attempt-id-b">B</span><span><strong>Payment B</strong><small>700 sats</small></span><b id="sandbox-attempt-b">—</b></div>
+              </div>
+              <div class="sandbox-result-numbers"><div><span>SETTLED PRINCIPAL</span><strong><span id="sandbox-settled">—</span> sats</strong></div><div><span>REMAINING BUDGET</span><strong><span id="sandbox-remaining">—</span> sats</strong></div></div>
+              <p class="sandbox-invariant"><span id="sandbox-invariant-mark">✓</span><span id="sandbox-invariant">Spending invariant held</span></p>
+              <div class="sandbox-evidence-actions"><button id="view-sandbox-evidence" class="button button-secondary" type="button" hidden>View Sandbox Evidence</button><a id="download-sandbox-evidence" class="button button-primary" href="#" download hidden>Download Sandbox Evidence <span aria-hidden="true">↓</span></a><a class="button button-secondary" href="#verified-live">View Verified Live PASS <span aria-hidden="true">→</span></a></div>
+              <p class="sandbox-disclaimer">Simulation only · No live NWC or Lightning execution</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <dialog id="sandbox-evidence-dialog" class="sandbox-dialog" aria-labelledby="sandbox-dialog-title">
+        <div class="sandbox-dialog-head"><div><p class="sandbox-label">SIMULATION ARTIFACT</p><h2 id="sandbox-dialog-title">Sandbox Evidence</h2></div><button id="close-sandbox-evidence" class="dialog-close" type="button" aria-label="Close evidence">×</button></div>
+        <p>This evidence is generated by the local sandbox and is not live wallet evidence.</p>
+        <pre id="sandbox-evidence-json"></pre>
+      </dialog>
+
+      <section id="verified-live" class="verified-section" aria-labelledby="verified-title">
+        <div class="section-heading verified-heading">
+          <div><p class="eyebrow">02 <span class="eyebrow-rule"></span> VERIFIED LIVE TEST</p><h2 id="verified-title">Evidence from a real NWC + Lightning stress test.</h2></div>
+          <span class="verified-pass-chip"><span class="status-dot"></span> VERIFIED · PASS</span>
+        </div>
+        <ul class="infrastructure-list" aria-label="Verified live infrastructure">
+          <li>Nostr Wallet Connect</li><li>Alby Hub</li><li>Lightning</li><li>Alice / Bob LND</li><li>Bitcoin regtest</li>
+        </ul>
+
+      <section class="metric-strip" aria-label="Verified live run summary">
+        <article class="metric"><span class="metric-label">WALLET LIMIT</span><strong><span id="limit-value">—</span><small> sats</small></strong></article>
+        <article class="metric"><span class="metric-label">PAYMENT PRESSURE</span><strong><span id="request-count">—</span><small> × </small><span id="attempt-amount">—</span><small> sats</small></strong></article>
+        <article class="metric metric-accent"><span class="metric-label">DISPATCH GAP</span><strong><span id="dispatch-delta">—</span><small> ms</small></strong></article>
+      </section>
+
+      <section class="section-block stress-section" aria-labelledby="stress-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">LIVE PAYMENT OUTCOMES</p><h2 id="stress-title">One limit. Two simultaneous attempts.</h2></div>
+          <p class="section-note">Released together at a shared barrier</p>
+        </div>
+
+        <div class="race-board">
+          <div class="wallet-node">
+            <div class="node-icon wallet-icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M5 9.5A2.5 2.5 0 0 1 7.5 7H25a2 2 0 0 1 2 2v16H7.5A2.5 2.5 0 0 1 5 22.5v-13Z" stroke="currentColor" stroke-width="1.7"/><path d="M5 11h19.5A2.5 2.5 0 0 1 27 13.5V18h-7a3 3 0 0 1 0-6h6.5M21 15h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="node-kicker">WALLET UNDER TEST</span>
+            <strong>Alby Hub</strong>
+            <span class="node-subtitle">Nostr Wallet Connect</span>
+            <div class="wallet-limit"><span>Spend limit</span><strong><span id="wallet-limit">—</span> sats</strong></div>
+          </div>
+
+          <div class="attempt-stack" aria-label="Concurrent payment attempts">
+            <article class="attempt-row" id="attempt-a">
+              <div class="attempt-letter letter-settled">A</div>
+              <div class="attempt-copy"><div class="attempt-title"><strong>Payment A</strong><span id="attempt-a-amount">— sats</span></div><div class="attempt-route"><span class="route-line"></span><span class="bolt" aria-hidden="true">↗</span><span>Bob · LND receiver</span></div></div>
+              <div class="attempt-outcome"><span id="attempt-a-state" class="outcome-pill">—</span><span id="attempt-a-detail" class="outcome-detail">Awaiting evidence</span></div>
+            </article>
+            <article class="attempt-row" id="attempt-b">
+              <div class="attempt-letter letter-blocked">B</div>
+              <div class="attempt-copy"><div class="attempt-title"><strong>Payment B</strong><span id="attempt-b-amount">— sats</span></div><div class="attempt-route"><span class="route-line"></span><span class="bolt" aria-hidden="true">↗</span><span>Bob · LND receiver</span></div></div>
+              <div class="attempt-outcome"><span id="attempt-b-state" class="outcome-pill">—</span><span id="attempt-b-detail" class="outcome-detail">Awaiting evidence</span></div>
+            </article>
+          </div>
+
+          <div class="spent-node">
+            <span class="node-kicker">INDEPENDENTLY SETTLED</span>
+            <strong class="spent-amount"><span id="spent-total">—</span><small> sats</small></strong>
+            <progress id="spent-fill" class="spent-meter" max="1000" value="0" aria-label="Independently settled principal against the wallet limit">0%</progress>
+            <span class="spent-caption">of <span id="spent-limit">—</span> sats limit</span>
+            <span id="board-result" class="result-chip">—</span>
+          </div>
+          <div class="barrier-caption"><span class="barrier-icon" aria-hidden="true">Ⅱ</span><span>Same barrier</span><span class="barrier-dot"></span><span id="barrier-delta">— ms apart</span></div>
+        </div>
+      </section>
+
+      <section class="section-block latest-section" aria-labelledby="latest-title">
+        <div class="section-heading compact-heading">
+          <div><p class="eyebrow">VERIFIED RUN DETAILS</p><h2 id="latest-title">The limit held under pressure.</h2></div>
+          <span class="run-network"><span class="status-dot"></span> LOCAL REGTEST</span>
+        </div>
+        <div class="latest-grid">
+          <article class="latest-stat"><span class="latest-icon icon-clock" aria-hidden="true">↔</span><span class="latest-label">Dispatch delta</span><strong><span id="latest-delta">—</span><small> ms</small></strong><span class="latest-foot">Between request starts</span></article>
+          <article class="latest-stat"><span class="latest-icon icon-settle" aria-hidden="true">✓</span><span class="latest-label">Settled principal</span><strong><span id="latest-settled">—</span><small> sats</small></strong><span class="latest-foot">Confirmed by Bob’s LND</span></article>
+          <article class="latest-stat"><span class="latest-icon icon-limit" aria-hidden="true">⌁</span><span class="latest-label">Budget remaining</span><strong><span id="latest-remaining">—</span><small> sats</small></strong><span class="latest-foot">After both attempts</span></article>
+          <article class="latest-stat latest-stat-checks"><span class="latest-label">Evidence checks</span><div class="check-row"><span id="evidence-check" class="check-mark">—</span><span>Evidence complete</span></div><div class="check-row"><span id="invariant-check" class="check-mark">—</span><span>Spending invariant held</span></div></article>
+        </div>
+      </section>
+
+      <section id="evidence" class="evidence-section section-block" aria-labelledby="evidence-title">
+        <div class="evidence-copy"><p class="eyebrow eyebrow-light">VERIFIED RECEIVER-SIDE PROOF</p><div class="evidence-title-line"><span id="evidence-badge" class="evidence-badge">—</span><h2 id="evidence-title">Ground truth lives at the receiver.</h2></div><p>Payment responses are not the verdict. LimitProbe checks Bob’s LND invoice records independently, then compares settled principal with the verified starting budget.</p><div class="evidence-actions"><a id="download-report" class="button button-primary" href="/reports/phase6.2-final-evidence.json?download=1" download>Download Verified Evidence <span aria-hidden="true">↓</span></a><a class="text-link" href="/reports/phase6.2-final-evidence.json" target="_blank" rel="noopener">View Verified Evidence <span aria-hidden="true">↗</span></a></div></div>
+        <div class="proof-panel">
+          <div class="proof-panel-head"><span>BOB · LND INVOICE LOOKUP</span><span class="proof-live"><i></i> INDEPENDENT</span></div>
+          <div class="proof-row"><div class="proof-id">A</div><div class="proof-details"><strong id="proof-a-state">—</strong><span id="proof-a-amount">—</span></div><span id="proof-a-mark" class="proof-mark">—</span></div>
+          <div class="proof-row"><div class="proof-id">B</div><div class="proof-details"><strong id="proof-b-state">—</strong><span id="proof-b-amount">—</span></div><span id="proof-b-mark" class="proof-mark">—</span></div>
+          <div class="proof-total"><span>Receiver settled total</span><strong><span id="proof-total">—</span> sats</strong></div>
+          <div class="invariant-line"><span>settled principal ≤ starting limit</span><strong id="invariant-state">—</strong></div>
+        </div>
+      </section>
+      </section>
+
+      <section class="section-block how-section" aria-labelledby="how-title">
+        <div class="section-heading compact-heading"><div><p class="eyebrow">03 <span class="eyebrow-rule"></span> HOW IT WORKS</p><h2 id="how-title">A simple test of a critical guardrail.</h2></div><p class="section-note">LimitProbe tests the guardrail. It is not the guardrail.</p></div>
+        <ol class="steps-list">
+          <li><span class="step-number">01</span><span class="step-icon" aria-hidden="true">◉</span><h3>Constrain</h3><p>Set a spending budget on the NWC wallet.</p></li>
+          <li><span class="step-number">02</span><span class="step-icon" aria-hidden="true">⇉</span><h3>Apply pressure</h3><p>Release Lightning payment requests together.</p></li>
+          <li><span class="step-number">03</span><span class="step-icon" aria-hidden="true">⌕</span><h3>Reconcile</h3><p>Check both invoices independently at receiver LND.</p></li>
+          <li><span class="step-number">04</span><span class="step-icon" aria-hidden="true">✓</span><h3>Classify</h3><p>Report PASS, FAIL, or INCONCLUSIVE from evidence.</p></li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="site-footer page-shell"><a class="brand footer-brand" href="#top"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Limit<span class="brand-light">Probe</span></span></a><span>Browser sandbox · Verified Alby Hub / NWC regtest</span><a href="#top" class="back-top">Back to top ↑</a></footer>
+  </body>
+</html>
