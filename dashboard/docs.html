@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f5f1" />
+    <meta name="description" content="How LimitProbe tests Nostr Wallet Connect spending limits and verifies payment settlement." />
+    <title>Docs — LimitProbe</title>
+    <link rel="stylesheet" href="/dashboard.css" />
+    <link rel="stylesheet" href="/docs.css" />
+  </head>
+  <body class="docs-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header docs-header page-shell">
+      <a class="brand" href="/" aria-label="LimitProbe home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>Limit<span class="brand-light">Probe</span></span>
+      </a>
+      <nav class="header-meta" aria-label="Main navigation">
+        <a class="header-link" href="/">Product</a>
+        <a class="header-link" href="/docs" aria-current="page">Docs</a>
+        <a class="header-link" href="/#verified-live">Verified evidence</a>
+      </nav>
+    </header>
+
+    <main id="main" class="docs-main page-shell">
+      <div class="docs-layout">
+        <article class="docs-prose">
+          <header class="docs-intro">
+            <p class="eyebrow"><span class="eyebrow-rule"></span> PROJECT GUIDE</p>
+            <h1>How LimitProbe tests NWC spending limits</h1>
+            <p class="docs-lede">LimitProbe is a black-box Nostr Wallet Connect spending-limit stress tester for AI-agent Lightning wallets. It checks whether a wallet’s spending limit still holds when two individually affordable payments arrive together.</p>
+          </header>
+
+          <section id="overview" class="docs-section">
+            <p class="docs-kicker">01 · OVERVIEW</p>
+            <h2>The question behind the test</h2>
+            <blockquote>“If an autonomous agent is given a Bitcoin wallet with a spending limit, can that limit still be trusted when multiple payments hit it at nearly the same time?”</blockquote>
+            <p>LimitProbe tests that behavior from outside the wallet. Alby Hub is the system under test; the project observes its NWC requests, responses, budget reports, and invoice lookups without treating a successful payment response as settlement proof.</p>
+          </section>
+
+          <section id="why" class="docs-section">
+            <p class="docs-kicker">02 · WHY THIS MATTERS</p>
+            <h2>A limit needs to hold under concurrency</h2>
+            <p>AI agents can initiate payments autonomously, so a wallet spending limit is an important boundary on what an agent can spend. A single-payment check only shows how the wallet handled one request. It does not establish what happens when several valid requests reach the limit at once.</p>
+            <p>Concurrent requests can exercise budget accounting at the same time. LimitProbe applies that pressure and checks the final receiver-side settlement. The project tests this boundary; it does not claim that a specific wallet vulnerability exists.</p>
+          </section>
+
+          <section id="test" class="docs-section">
+            <p class="docs-kicker">03 · THE TEST</p>
+            <h2>Two affordable requests exceed the combined budget</h2>
+            <div class="scenario-card" aria-label="Verified test amounts">
+              <div><span>Starting spending limit</span><strong>1,000 sats</strong></div>
+              <div><span>Attempt A</span><strong>700 sats</strong></div>
+              <div><span>Attempt B</span><strong>700 sats</strong></div>
+              <div class="scenario-total"><span>Combined requested principal</span><strong>1,400 sats</strong></div>
+            </div>
+            <p>Each invoice is individually within the configured limit, while both together exceed it. Safe behavior means independently confirmed settled principal remains at or below the spendable budget captured before dispatch. Fees are recorded separately from principal.</p>
+          </section>
+
+          <section id="how" class="docs-section">
+            <p class="docs-kicker">04 · HOW IT WORKS</p>
+            <h2>One barrier, then independent checks</h2>
+            <ol class="docs-steps">
+              <li><strong>Constrain the wallet.</strong> Configure the NWC connection with the test spending budget and read the starting budget.</li>
+              <li><strong>Prepare receiver invoices.</strong> Create two distinct Lightning invoices on the receiver LND node.</li>
+              <li><strong>Release both attempts together.</strong> Prepare both NWC <code>pay_invoice</code> requests behind one synchronization barrier, then dispatch concurrently.</li>
+              <li><strong>Reconcile the outcome.</strong> Capture NWC replies and <code>lookup_invoice</code> results, independently query Bob’s LND invoice state, and read the final budget.</li>
+              <li><strong>Evaluate and report.</strong> Calculate settled principal against the verified starting budget, preserve timing/provenance, and generate redacted JSON evidence.</li>
+            </ol>
+
+            <figure class="architecture-card">
+              <figcaption>Test path · local Bitcoin regtest environment</figcaption>
+              <div class="architecture-lane"><span class="lane-label">NWC request path</span><div class="architecture-flow"><span>LimitProbe<small>NWC client</small></span><i aria-hidden="true">↔</i><span>Nostr relay<small>local message path</small></span><i aria-hidden="true">↔</i><span>Alby Hub<small>wallet under test</small></span><i aria-hidden="true">↔</i><span>Alice LND<small>payer</small></span></div></div>
+              <div class="architecture-lane"><span class="lane-label">Lightning settlement</span><div class="architecture-flow architecture-settlement"><span>Alice LND<small>payer</small></span><i aria-hidden="true">→</i><span>Lightning<small>payment network</small></span><i aria-hidden="true">→</i><span>Bob LND<small>receiver ground truth</small></span></div></div>
+            </figure>
+          </section>
+
+          <section id="evidence" class="docs-section">
+            <p class="docs-kicker">05 · EVIDENCE MODEL</p>
+            <h2>Payment replies are only one part of the evidence</h2>
+            <p>LimitProbe combines the payer’s NWC payment responses, NWC invoice lookups, Bob LND receiver observations, before-and-after budget snapshots, and timestamp/run binding. It does not infer settlement from a payer response alone. Missing or contradictory evidence is preserved rather than treated as success.</p>
+            <dl class="classification-list">
+              <div><dt><span class="result-dot result-pass"></span>PASS</dt><dd>Required evidence is complete and independently confirms settled principal did not exceed the starting spendable budget.</dd></div>
+              <div><dt><span class="result-dot result-fail"></span>FAIL</dt><dd>Independent receiver evidence proves settled principal exceeded the starting spendable budget.</dd></div>
+              <div><dt><span class="result-dot result-unknown"></span>INCONCLUSIVE</dt><dd>Evidence is missing, unresolved, contradictory, or otherwise insufficient to prove PASS or FAIL.</dd></div>
+            </dl>
+          </section>
+
+          <section id="verified-run" class="docs-section">
+            <p class="docs-kicker">06 · VERIFIED LIVE RUN</p>
+            <h2>One committed NWC + Lightning PASS</h2>
+            <p>This result is from the committed report for run <code class="run-hash">5519e35b-96c5-4e25-8bbc-668d41dea845</code>, using controlled Bitcoin regtest infrastructure.</p>
+            <div class="live-result-card">
+              <div class="live-result-heading"><span>VERIFIED LIVE TEST</span><strong>PASS</strong></div>
+              <dl class="live-result-grid">
+                <div><dt>Starting budget</dt><dd>1,000 sats</dd></div>
+                <div><dt>Concurrent attempts</dt><dd>700 + 700 sats</dd></div>
+                <div><dt>Dispatch delta</dt><dd>1.312 ms</dd></div>
+                <div><dt>Attempt A</dt><dd>SETTLED · 700 sats</dd></div>
+                <div><dt>Attempt B</dt><dd>QUOTA_EXCEEDED · unpaid</dd></div>
+                <div><dt>Settled principal</dt><dd>700 sats</dd></div>
+                <div><dt>Budget remaining</dt><dd>300 sats</dd></div>
+                <div><dt>Evidence</dt><dd>Complete · invariant held</dd></div>
+              </dl>
+              <div class="docs-evidence-links"><a class="button button-primary" href="/reports/phase6.2-final-evidence.json">View verified evidence <span aria-hidden="true">↗</span></a><a class="text-link" href="/reports/phase6.2-final-evidence.json?download=1" download>Download JSON <span aria-hidden="true">↓</span></a></div>
+            </div>
+          </section>
+
+          <section id="sandbox-live" class="docs-section">
+            <p class="docs-kicker">07 · TWO DIFFERENT EXPERIENCES</p>
+            <h2>Sandbox simulation vs. verified live test</h2>
+            <div class="mode-comparison">
+              <article><span class="mode-label">SANDBOX TEST</span><h3>Try it in your browser</h3><ul><li>Simulated, fast, and interactive</li><li>Generates fresh sandbox evidence</li><li>Does not call NWC, Alby Hub, or Lightning</li></ul></article>
+              <article><span class="mode-label mode-live">VERIFIED LIVE TEST</span><h3>Inspect the committed run</h3><ul><li>Real NWC and Lightning payments on regtest</li><li>Used Alby Hub, a local Nostr relay, Alice and Bob LND</li><li>Receiver settlement was independently reconciled</li></ul></article>
+            </div>
+            <p class="docs-note">A sandbox PASS describes the simulation only. It is not a new wallet or Lightning execution and does not replace the separately linked verified live evidence.</p>
+          </section>
+
+          <section id="technology" class="docs-section">
+            <p class="docs-kicker">08 · TECHNOLOGY</p>
+            <h2>Technology Integration</h2>
+            <dl class="technology-list">
+              <div><dt>Nostr Wallet Connect (NWC)</dt><dd>The wallet-control interface used to request payments, inspect capabilities, look up invoices, and read budget evidence.</dd></div>
+              <div><dt>Nostr relay</dt><dd>Carries NWC messages between the LimitProbe client and Alby Hub in the local test setup.</dd></div>
+              <div><dt>Alby Hub</dt><dd>The black-box wallet under test; LimitProbe observes its externally visible NWC behavior.</dd></div>
+              <div><dt>Lightning and LND</dt><dd>Lightning carries the test payments. Alice LND is the payer node and Bob LND provides receiver-side invoice ground truth.</dd></div>
+              <div><dt>Bitcoin regtest</dt><dd>A local test network for the live run, using controlled test funds rather than mainnet bitcoin.</dd></div>
+            </dl>
+          </section>
+
+          <section id="trust" class="docs-section">
+            <p class="docs-kicker">09 · SECURITY AND TRUST</p>
+            <h2>Keep claims tied to evidence</h2>
+            <ul class="docs-bullets">
+              <li>The wallet is treated as a black box; Bob’s receiver records supply independent settlement evidence.</li>
+              <li>Public evidence is redacted. The committed report does not include the private NWC connection URI or invoice strings.</li>
+              <li>The evaluator preserves PASS, FAIL, and INCONCLUSIVE outcomes; incomplete or contradictory evidence cannot be promoted to PASS.</li>
+              <li>Each payment attempt is dispatched once; payment retries are not used to fill gaps in evidence.</li>
+            </ul>
+          </section>
+
+          <section id="limits" class="docs-section">
+            <p class="docs-kicker">10 · CURRENT SCOPE</p>
+            <h2>What this dashboard does—and does not—run</h2>
+            <ul class="docs-bullets">
+              <li><strong>Run Sandbox Test</strong> is a browser-side simulation only.</li>
+              <li>The verified live execution used a controlled local Bitcoin regtest setup.</li>
+              <li>The dashboard does not currently expose arbitrary public-user NWC wallet testing or a bring-your-own-wallet connection.</li>
+              <li>A live test requires suitable NWC, payer, receiver, and Lightning infrastructure.</li>
+            </ul>
+          </section>
+
+          <section id="future" class="docs-section docs-future">
+            <p class="docs-kicker">11 · FUTURE WORK</p>
+            <h2>Possible next steps</h2>
+            <p>Bring-your-own NWC testing, isolated hosted test environments, configurable budgets and payment patterns, and additional concurrency scenarios are directions for future work. They are not features of the current dashboard.</p>
+          </section>
+        </article>
+
+        <aside class="docs-rail" aria-label="On this page">
+          <p>ON THIS PAGE</p>
+          <a href="#overview">Overview</a><a href="#why">Why it matters</a><a href="#test">The test</a><a href="#how">How it works</a><a href="#evidence">Evidence model</a><a href="#verified-run">Verified run</a><a href="#sandbox-live">Sandbox vs. live</a><a href="#technology">Technology</a><a href="#trust">Security and trust</a><a href="#limits">Scope</a><a href="#future">Future work</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="site-footer docs-footer page-shell"><a class="brand footer-brand" href="/"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Limit<span class="brand-light">Probe</span></span></a><span>Project documentation · Verified run evidence is linked above</span><a href="/" class="back-top">Back to Dashboard ↑</a></footer>
+  </body>
+</html>
