@@ -1,4 +1,4 @@
-import { runSandboxSimulation } from "./sandbox/sandbox-runner.js";
+import { runSandboxSimulation, validateSandboxConfiguration } from "./sandbox/sandbox-runner.js";
 import { createSandboxEvidence } from "./sandbox/sandbox-evidence.js";
 
 const EXPECTED_RUN_ID = "5519e35b-96c5-4e25-8bbc-668d41dea845";
@@ -135,7 +135,7 @@ try {
 const sandboxStepKeys = ["prepare", "budget", "invoices", "dispatch", "reconcile", "evidence", "classification"];
 const sandboxStepText = {
   prepare: "Preparing sandbox",
-  budget: "Applying the 1,000 sat spending limit",
+  budget: "Applying the spending limit",
   invoices: "Creating two simulated payment attempts",
   dispatch: "Dispatching both attempts at one barrier",
   reconcile: "Reconciling simulated outcomes",
@@ -169,11 +169,26 @@ function renderSandboxEvidence(evidence) {
   latestSandboxEvidence = evidence;
   byId("sandbox-classification").textContent = evidence.finalClassification;
   byId("sandbox-run-id").textContent = `RUN ${evidence.runId}`;
-  byId("sandbox-attempt-a").textContent = evidence.attempts[0].simulatedPaymentResult === "SUCCESS" ? "SETTLED" : evidence.attempts[0].simulatedPaymentResult;
-  byId("sandbox-attempt-b").textContent = evidence.attempts[1].simulatedPaymentResult === "SUCCESS" ? "SETTLED" : evidence.attempts[1].simulatedPaymentResult;
+  byId("sandbox-result-budget").textContent = formatSats(evidence.startingBudgetSats);
+  byId("sandbox-result-behavior").textContent = evidence.configuration.behavior === "allow_overspend" ? "Allow overspending" : "Enforce limit";
+  for (const [index, id] of [[0, "sandbox-attempt-a"], [1, "sandbox-attempt-b"]]) {
+    const result = evidence.attempts[index].simulatedPaymentResult;
+    const badge = byId(id);
+    badge.textContent = result === "SUCCESS" ? "SETTLED" : result;
+    badge.dataset.outcome = result === "SUCCESS" ? "settled" : result === "QUOTA_EXCEEDED" ? "blocked" : "other";
+  }
+  byId("sandbox-attempt-amount-a").textContent = formatSats(evidence.attempts[0].requestedAmountSats);
+  byId("sandbox-attempt-amount-b").textContent = formatSats(evidence.attempts[1].requestedAmountSats);
   byId("sandbox-settled").textContent = formatSats(evidence.settledPrincipalSats);
   byId("sandbox-remaining").textContent = formatSats(evidence.remainingBudgetSats);
-  byId("sandbox-invariant").textContent = evidence.invariant.holds ? "Spending invariant held" : "Spending invariant failed";
+  byId("sandbox-remaining-unit").hidden = evidence.remainingBudgetSats === null;
+  byId("sandbox-overspend").hidden = evidence.overspendSats === 0;
+  byId("sandbox-overspend").textContent = evidence.overspendSats > 0
+    ? `Overspent the configured limit by ${formatSats(evidence.overspendSats)} sats. The remaining budget is not a valid balance.`
+    : "";
+  byId("sandbox-invariant").textContent = evidence.invariant.holds
+    ? "Spending invariant held"
+    : `Spending invariant failed · ${formatSats(evidence.overspendSats)} sats over limit`;
   byId("sandbox-invariant-mark").textContent = evidence.invariant.holds ? "✓" : "!";
   byId("sandbox-stage").dataset.classification = evidence.finalClassification.toLowerCase();
   byId("sandbox-classification").dataset.classification = evidence.finalClassification.toLowerCase();
@@ -197,6 +212,34 @@ function pauseForProgress() {
 
 async function runSandbox() {
   if (sandboxRunning) return;
+  const validation = validateSandboxConfiguration({
+    startingBudgetSats: byId("sandbox-budget-input").value,
+    attemptAmountSats: { A: byId("sandbox-amount-a-input").value, B: byId("sandbox-amount-b-input").value },
+    behavior: byId("sandbox-behavior-input").value,
+  });
+  const validationBox = byId("sandbox-validation");
+  document.querySelectorAll("#sandbox-budget-input, #sandbox-amount-a-input, #sandbox-amount-b-input, #sandbox-behavior-input").forEach((input) => input.removeAttribute("aria-invalid"));
+  if (!validation.valid) {
+    const fields = {
+      startingBudgetSats: "sandbox-budget-input",
+      attemptAmountA: "sandbox-amount-a-input",
+      attemptAmountB: "sandbox-amount-b-input",
+      behavior: "sandbox-behavior-input",
+    };
+    for (const [key, message] of Object.entries(validation.errors)) {
+      const field = byId(fields[key]);
+      if (field) field.setAttribute("aria-invalid", "true");
+    }
+    validationBox.textContent = Object.values(validation.errors).join(" ");
+    validationBox.hidden = false;
+    byId("sandbox-status").textContent = "Please correct the sandbox values before running.";
+    const firstInvalid = document.querySelector("#sandbox-budget-input[aria-invalid], #sandbox-amount-a-input[aria-invalid], #sandbox-amount-b-input[aria-invalid], #sandbox-behavior-input[aria-invalid]");
+    firstInvalid?.focus();
+    return;
+  }
+  validationBox.hidden = true;
+  const configuration = validation.configuration;
+  sandboxStepText.budget = `Applying the ${formatSats(configuration.startingBudgetSats)} sat spending limit`;
   sandboxRunning = true;
   document.querySelectorAll("[data-run-sandbox]").forEach((button) => { button.disabled = true; });
   document.querySelectorAll("[data-run-sandbox]").forEach((button) => { button.firstChild.textContent = "Running Sandbox… "; });
@@ -207,7 +250,7 @@ async function runSandbox() {
     delete step.dataset.state;
     step.removeAttribute("aria-current");
   });
-  byId("sandbox-progress").lastElementChild.lastElementChild.textContent = "PASS / FAIL / INCONCLUSIVE";
+  byId("sandbox-progress").lastElementChild.lastElementChild.textContent = "PASS / FAIL";
   byId("sandbox-empty").hidden = false;
   byId("sandbox-results").hidden = true;
   byId("view-sandbox-evidence").hidden = true;
@@ -229,8 +272,8 @@ async function runSandbox() {
       updateSandboxProgress(index);
       byId("sandbox-status").textContent = sandboxStepText[key];
       await pauseForProgress();
-      if (key === "dispatch") simulation = await runSandboxSimulation();
-      if (key === "reconcile" && simulation) byId("sandbox-status").textContent = `${simulation.attempts.filter((attempt) => attempt.result === "SUCCESS").length} settled · ${simulation.attempts.filter((attempt) => attempt.result === "QUOTA_EXCEEDED").length} blocked by the simulated limit`;
+      if (key === "dispatch") simulation = await runSandboxSimulation({ configuration });
+      if (key === "reconcile" && simulation) byId("sandbox-status").textContent = `${formatSats(simulation.settledPrincipalSats)} sats simulated settled principal · ${formatSats(simulation.overspendSats)} sats over limit`;
       if (key === "evidence") evidence = createSandboxEvidence(simulation);
     }
     updateSandboxProgress(sandboxStepKeys.length - 1);
@@ -243,7 +286,8 @@ async function runSandbox() {
     const finalStep = byId("sandbox-progress").lastElementChild;
     finalStep.classList.add("is-active");
     finalStep.dataset.state = "error";
-    byId("sandbox-status").textContent = "INCONCLUSIVE · The sandbox could not complete this run. Try again.";
+    finalStep.lastElementChild.textContent = "Sandbox error · no evidence generated";
+    byId("sandbox-status").textContent = "Sandbox error · this simulation did not complete. Try again.";
     byId("sandbox-stage").dataset.state = "error";
   } finally {
     document.querySelectorAll("[data-run-sandbox]").forEach((button) => {
@@ -255,6 +299,22 @@ async function runSandbox() {
 }
 
 document.querySelectorAll("[data-run-sandbox]").forEach((button) => button.addEventListener("click", runSandbox));
+function updateSandboxPreview() {
+  const budget = byId("sandbox-budget-input").value || "—";
+  const amountA = byId("sandbox-amount-a-input").value || "—";
+  const amountB = byId("sandbox-amount-b-input").value || "—";
+  byId("sandbox-preview-summary").textContent = `A ${formatPreviewAmount(amountA)} + B ${formatPreviewAmount(amountB)} sats · ${formatPreviewAmount(budget)} sat limit`;
+}
+
+function formatPreviewAmount(value) {
+  return /^\d+$/.test(value) ? number.format(Number(value)) : value;
+}
+
+document.querySelectorAll("#sandbox-budget-input, #sandbox-amount-a-input, #sandbox-amount-b-input").forEach((input) => input.addEventListener("input", updateSandboxPreview));
+document.querySelectorAll("#sandbox-budget-input, #sandbox-amount-a-input, #sandbox-amount-b-input, #sandbox-behavior-input").forEach((input) => input.addEventListener("input", () => {
+  byId("sandbox-validation").hidden = true;
+  input.removeAttribute("aria-invalid");
+}));
 byId("view-sandbox-evidence").addEventListener("click", () => {
   if (!latestSandboxEvidence) return;
   byId("sandbox-evidence-json").textContent = JSON.stringify(latestSandboxEvidence, null, 2);

@@ -52,18 +52,28 @@
         <div class="sandbox-grid">
           <div class="sandbox-controls">
             <p class="sandbox-label">A WALLET-LIMIT SIMULATION</p>
-            <h3>One 1,000 sat budget. Two 700 sat requests.</h3>
-            <p>See how one shared spending limit handles two payment attempts released together. This sandbox uses no live wallet, NWC connection, or Lightning network.</p>
+            <h3>Set up concurrent payment pressure.</h3>
+            <p>Choose a shared budget, two payment amounts, and how the simulated wallet responds. This sandbox uses no live wallet, NWC connection, or Lightning network.</p>
+            <div class="sandbox-form" aria-label="Sandbox configuration">
+              <label class="sandbox-field" for="sandbox-budget-input"><span>Spending limit</span><span class="sandbox-input-wrap"><input id="sandbox-budget-input" type="text" inputmode="numeric" autocomplete="off" value="1000" aria-describedby="sandbox-input-help"><small>sats</small></span></label>
+              <div class="sandbox-field-row">
+                <label class="sandbox-field" for="sandbox-amount-a-input"><span>Payment A</span><span class="sandbox-input-wrap"><input id="sandbox-amount-a-input" type="text" inputmode="numeric" autocomplete="off" value="700" aria-describedby="sandbox-input-help"><small>sats</small></span></label>
+                <label class="sandbox-field" for="sandbox-amount-b-input"><span>Payment B</span><span class="sandbox-input-wrap"><input id="sandbox-amount-b-input" type="text" inputmode="numeric" autocomplete="off" value="700" aria-describedby="sandbox-input-help"><small>sats</small></span></label>
+              </div>
+              <label class="sandbox-field" for="sandbox-behavior-input"><span>Wallet behavior</span><select id="sandbox-behavior-input"><option value="enforce_limit">Enforce spending limit</option><option value="allow_overspend">Allow overspending (unsafe)</option></select></label>
+              <p id="sandbox-input-help" class="sandbox-input-help">Use whole sat amounts from 1 to 1,000,000.</p>
+              <p id="sandbox-validation" class="sandbox-validation" role="alert" hidden></p>
+            </div>
             <button class="button button-primary button-large sandbox-run-button" type="button" data-run-sandbox>Run Sandbox Test <span aria-hidden="true">→</span></button>
             <p id="sandbox-status" class="sandbox-status" role="status" aria-live="polite">Ready. Run a fresh simulation whenever you like.</p>
             <ol id="sandbox-progress" class="sandbox-progress" aria-label="Sandbox test progress">
               <li data-step="prepare"><span class="progress-mark">1</span><span>Preparing sandbox</span></li>
-              <li data-step="budget"><span class="progress-mark">2</span><span>Applying 1,000 sat spending limit</span></li>
+              <li data-step="budget"><span class="progress-mark">2</span><span>Applying spending limit</span></li>
               <li data-step="invoices"><span class="progress-mark">3</span><span>Creating simulated payment attempts</span></li>
               <li data-step="dispatch"><span class="progress-mark">4</span><span>Dispatching simulated concurrent payments</span></li>
               <li data-step="reconcile"><span class="progress-mark">5</span><span>Reconciling simulated result</span></li>
               <li data-step="evidence"><span class="progress-mark">6</span><span>Generating evidence</span></li>
-              <li data-step="classification"><span class="progress-mark">7</span><span>PASS / FAIL / INCONCLUSIVE</span></li>
+              <li data-step="classification"><span class="progress-mark">7</span><span>PASS / FAIL</span></li>
             </ol>
           </div>
           <div id="sandbox-stage" class="sandbox-stage" data-state="idle" aria-label="Sandbox results">
@@ -71,18 +81,20 @@
             <div id="sandbox-empty" class="sandbox-empty">
               <span class="sandbox-wallet-glyph" aria-hidden="true">₿</span>
               <strong>Ready to test the limit?</strong>
-              <span>Two 700 sat attempts · 1,000 sat budget</span>
+              <span id="sandbox-preview-summary">A 700 + B 700 sats · 1,000 sat limit</span>
               <div class="sandbox-preview-bar" aria-hidden="true"><i></i><i></i></div>
-              <small>One settles. The remaining request exceeds the simulated budget.</small>
+              <small>Both requests share one release barrier and one simulated wallet budget.</small>
             </div>
             <div id="sandbox-results" class="sandbox-results" hidden>
               <div class="sandbox-result-heading"><div><span class="sandbox-label">FRESH SANDBOX RUN</span><strong id="sandbox-classification">PASS</strong></div><span id="sandbox-run-id" class="sandbox-run-id"></span></div>
-              <p class="sandbox-live-proof-note">Want the real proof? This same limit test passed on NWC + Lightning.</p>
+              <p class="sandbox-live-proof-note">Verified live reference: our 1,000 sat / 700 + 700 NWC + Lightning test passed.</p>
+              <div class="sandbox-config-summary"><span>LIMIT <strong><span id="sandbox-result-budget">—</span> sats</strong></span><span>BEHAVIOR <strong id="sandbox-result-behavior">—</strong></span></div>
               <div class="sandbox-attempts">
-                <div class="sandbox-attempt"><span class="sandbox-attempt-id">A</span><span><strong>Payment A</strong><small>700 sats</small></span><b id="sandbox-attempt-a">—</b></div>
-                <div class="sandbox-attempt"><span class="sandbox-attempt-id sandbox-attempt-id-b">B</span><span><strong>Payment B</strong><small>700 sats</small></span><b id="sandbox-attempt-b">—</b></div>
+                <div class="sandbox-attempt"><span class="sandbox-attempt-id">A</span><span><strong>Payment A</strong><small><span id="sandbox-attempt-amount-a">700</span> sats</small></span><b id="sandbox-attempt-a">—</b></div>
+                <div class="sandbox-attempt"><span class="sandbox-attempt-id sandbox-attempt-id-b">B</span><span><strong>Payment B</strong><small><span id="sandbox-attempt-amount-b">700</span> sats</small></span><b id="sandbox-attempt-b">—</b></div>
               </div>
-              <div class="sandbox-result-numbers"><div><span>SETTLED PRINCIPAL</span><strong><span id="sandbox-settled">—</span> sats</strong></div><div><span>REMAINING BUDGET</span><strong><span id="sandbox-remaining">—</span> sats</strong></div></div>
+              <div class="sandbox-result-numbers"><div><span>SETTLED PRINCIPAL</span><strong><span id="sandbox-settled">—</span> sats</strong></div><div><span>REMAINING BUDGET</span><strong><span id="sandbox-remaining">—</span><small id="sandbox-remaining-unit"> sats</small></strong></div></div>
+              <p id="sandbox-overspend" class="sandbox-overspend" hidden></p>
               <p class="sandbox-invariant"><span id="sandbox-invariant-mark">✓</span><span id="sandbox-invariant">Spending invariant held</span></p>
               <div class="sandbox-evidence-actions"><button id="view-sandbox-evidence" class="button button-secondary" type="button" hidden>View Sandbox Evidence</button><a id="download-sandbox-evidence" class="button button-primary" href="#" download hidden>Download Sandbox Evidence <span aria-hidden="true">↓</span></a><a class="button button-secondary" href="#verified-live">View Verified Live PASS <span aria-hidden="true">→</span></a></div>
               <p class="sandbox-disclaimer">Simulation only · No live NWC or Lightning execution</p>
@@ -93,7 +105,7 @@
 
       <dialog id="sandbox-evidence-dialog" class="sandbox-dialog" aria-labelledby="sandbox-dialog-title">
         <div class="sandbox-dialog-head"><div><p class="sandbox-label">SIMULATION ARTIFACT</p><h2 id="sandbox-dialog-title">Sandbox Evidence</h2></div><button id="close-sandbox-evidence" class="dialog-close" type="button" aria-label="Close evidence">×</button></div>
-        <p>This evidence is generated by the local sandbox and is not live wallet evidence.</p>
+          <p>This evidence is generated by a browser simulation and is not live wallet evidence.</p>
         <pre id="sandbox-evidence-json"></pre>
       </dialog>
 
