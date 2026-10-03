@@ -8,6 +8,7 @@ const defaultOutputDirectory = resolve(projectDirectory, "dist");
 const reportPath = "reports/phase6.2-final-evidence.json";
 const publicFiles = [
   "dashboard/index.html",
+  "dashboard/favicon.svg",
   "dashboard/dashboard.css",
   "dashboard/dashboard.js",
   "dashboard/docs.html",

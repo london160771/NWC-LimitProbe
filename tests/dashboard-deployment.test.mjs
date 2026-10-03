@@ -13,8 +13,8 @@ test("Vercel static build contains only public dashboard assets and verified evi
   const outputDirectory = join(tempDirectory, "dist");
   try {
     const result = await buildStaticSite(outputDirectory);
-    assert.equal(result.files.length, 8);
-    assert.deepEqual((await readdir(outputDirectory)).sort(), ["dashboard.css", "dashboard.js", "docs.css", "docs.html", "index.html", "reports", "sandbox"].sort());
+    assert.equal(result.files.length, 9);
+    assert.deepEqual((await readdir(outputDirectory)).sort(), ["dashboard.css", "dashboard.js", "docs.css", "docs.html", "favicon.svg", "index.html", "reports", "sandbox"].sort());
     assert.deepEqual((await readdir(join(outputDirectory, "sandbox"))).sort(), ["sandbox-evidence.js", "sandbox-runner.js"]);
     assert.deepEqual((await readdir(join(outputDirectory, "reports"))).sort(), ["phase6.2-final-evidence.json"]);
     for (const forbidden of ["server.mjs", "build-static.mjs", "scripts", "AGENTS.md", "SPEC.md", "DESIGN.md"]) {
@@ -23,11 +23,15 @@ test("Vercel static build contains only public dashboard assets and verified evi
 
     const index = await readFile(join(outputDirectory, "index.html"), "utf8");
     const docs = await readFile(join(outputDirectory, "docs.html"), "utf8");
+    const favicon = await readFile(join(outputDirectory, "favicon.svg"), "utf8");
     const dashboardJs = await readFile(join(outputDirectory, "dashboard.js"), "utf8");
     assert.match(index, /href="\/docs"/);
+    assert.match(index, /href="\/favicon\.svg"/);
     assert.match(index, /download/);
     assert.match(index, /Run Sandbox Test/);
     assert.match(docs, /href="\/reports\/phase6\.2-final-evidence\.json"/);
+    assert.match(docs, /href="\/favicon\.svg"/);
+    assert.match(favicon, /<svg[^>]*viewBox="0 0 64 64"/);
     assert.match(docs, /download/);
     assert.match(dashboardJs, /fetch\("\/reports\/phase6\.2-final-evidence\.json"/);
 

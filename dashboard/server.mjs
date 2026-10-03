@@ -8,6 +8,7 @@ const projectDirectory = resolve(dashboardDirectory, "..");
 const routes = new Map([
   ["/", { path: resolve(dashboardDirectory, "index.html"), type: "text/html; charset=utf-8" }],
   ["/docs", { path: resolve(dashboardDirectory, "docs.html"), type: "text/html; charset=utf-8" }],
+  ["/favicon.svg", { path: resolve(dashboardDirectory, "favicon.svg"), type: "image/svg+xml" }],
   ["/dashboard.css", { path: resolve(dashboardDirectory, "dashboard.css"), type: "text/css; charset=utf-8" }],
   ["/docs.css", { path: resolve(dashboardDirectory, "docs.css"), type: "text/css; charset=utf-8" }],
   ["/dashboard.js", { path: resolve(dashboardDirectory, "dashboard.js"), type: "text/javascript; charset=utf-8" }],

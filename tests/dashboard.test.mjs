@@ -11,6 +11,10 @@ test("dashboard responsive rules cover mobile, tablet, and desktop widths withou
   // 390px and 430px use the narrow mobile rules; 768px uses the tablet rules;
   // 1440px remains on the unchanged desktop layout.
   assert.match(css, /@media\s*\(max-width:\s*430px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*768px\)\s*\{\s*\.sandbox-form input,\s*\.sandbox-form select,\s*\.sandbox-form textarea\s*\{\s*font-size:\s*16px/s);
+  assert.match(css, /\.sandbox-field-row\s*\{[^}]*grid-template-columns:\s*1fr 1fr/s);
+  assert.match(css, /\.sandbox-input-wrap input\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0/s);
+  assert.match(css, /\.sandbox-field select\s*\{[^}]*width:\s*100%/s);
   assert.match(css, /@media\s*\(max-width:\s*650px\)/);
   assert.match(css, /@media\s*\(max-width:\s*900px\)/);
   assert.match(css, /\.page-shell\s*\{\s*width:\s*min\(1160px,\s*calc\(100%\s*-\s*64px\)\)/);
@@ -34,6 +38,7 @@ test("dashboard serves the sandbox modules and the unchanged committed live evid
     assert.equal(docsResponse.status, 200);
     assert.match(docsResponse.headers.get("content-type"), /text\/html/);
     const docsHtml = await docsResponse.text();
+    assert.match(docsHtml, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml" \/>/);
     assert.match(docsHtml, /5519e35b-96c5-4e25-8bbc-668d41dea845/);
     assert.match(docsHtml, /Technology Integration/);
     assert.match(docsHtml, /SANDBOX TEST/);
@@ -50,6 +55,8 @@ test("dashboard serves the sandbox modules and the unchanged committed live evid
     const page = await fetch(base);
     assert.equal(page.status, 200);
     const pageHtml = await page.text();
+    assert.match(pageHtml, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml" \/>/);
+    assert.doesNotMatch(pageHtml, /user-scalable\s*=\s*"?no|maximum-scale\s*=\s*"?1/i);
     assert.match(pageHtml, /Can your AI agent/);
     assert.match(pageHtml, /Run Sandbox Test/);
     assert.match(pageHtml, /SANDBOX SIMULATION/);
@@ -75,6 +82,7 @@ test("dashboard serves the sandbox modules and the unchanged committed live evid
     assert.doesNotMatch(dashboardCss, /\.sandbox-attempt:nth-child\(2\) b/);
     assert.doesNotMatch(dashboardCss, /data-classification="fail"\] \.sandbox-attempt b/);
     assert.match(dashboardCss, /@media\s*\(max-width:\s*650px\)/);
+    assert.match(dashboardCss, /@media\s*\(max-width:\s*768px\)\s*\{\s*\.sandbox-form input,\s*\.sandbox-form select,\s*\.sandbox-form textarea\s*\{\s*font-size:\s*16px/s);
     assert.match(dashboardCss, /@media\s*\(max-width:\s*430px\)/);
     assert.match(dashboardCss, /font-size:\s*clamp\(34px,\s*9\.15vw,\s*39px\)/);
     assert.match(dashboardCss, /\.run-id,\s*\.sandbox-run-id\s*\{[^}]*overflow-wrap:\s*anywhere/s);
@@ -86,6 +94,11 @@ test("dashboard serves the sandbox modules and the unchanged committed live evid
     assert.match(docsCss, /@media\s*\(max-width:\s*680px\)/);
     assert.match(docsCss, /@media\s*\(max-width:\s*390px\)/);
     assert.match(docsCss, /overflow-wrap:\s*anywhere/);
+
+    const faviconResponse = await fetch(`${base}/favicon.svg`);
+    assert.equal(faviconResponse.status, 200);
+    assert.match(faviconResponse.headers.get("content-type"), /image\/svg\+xml/);
+    assert.match(await faviconResponse.text(), /<svg[^>]*viewBox="0 0 64 64"/);
 
     for (const asset of ["/sandbox/sandbox-runner.js", "/sandbox/sandbox-evidence.js"]) {
       const moduleResponse = await fetch(`${base}${asset}`);

@@ -462,6 +462,11 @@ main[data-classification="inconclusive"] .verdict-word { color: #83601f; }
   .proof-details strong, .proof-details span { overflow-wrap: anywhere; }
   .site-footer { column-gap: 12px; }
 }
+@media (max-width: 768px) {
+  .sandbox-form input,
+  .sandbox-form select,
+  .sandbox-form textarea { font-size: 16px; }
+}
 @media (max-width: 370px) {
   .page-shell { width: calc(100% - 28px); }
   .header-meta { gap: 7px; }
